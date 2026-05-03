@@ -1,0 +1,40 @@
+version: "3.9"
+
+# AWS-ready stack. Use with ECS task definitions or compose ecs.
+# All hosts/ports come from env vars at deploy time.
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: semcachelm-backend:latest
+    environment:
+      - APP_ENV=${APP_ENV:-production}
+      - QDRANT_HOST=${QDRANT_HOST}
+      - QDRANT_PORT=${QDRANT_PORT:-6333}
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL}
+      - OLLAMA_LLM_MODEL=${OLLAMA_LLM_MODEL:-llama3.1:8b}
+      - OLLAMA_EMBEDDING_MODEL=${OLLAMA_EMBEDDING_MODEL:-nomic-embed-text}
+      - CORS_ORIGINS=${CORS_ORIGINS}
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL}
+    image: semcachelm-frontend:latest
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
