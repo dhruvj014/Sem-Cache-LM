@@ -70,6 +70,9 @@ class QueryRouterService:
                 query,
                 hits,
                 self._settings.cache_rerank_lexical_weight,
+                quality_weight=self._settings.cache_rerank_quality_weight,
+                popularity_weight=self._settings.cache_rerank_popularity_weight,
+                popularity_cap=self._settings.cache_rerank_popularity_cap,
             )
 
             decision = self._agent.decide(

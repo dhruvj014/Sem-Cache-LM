@@ -44,15 +44,39 @@ class CacheService(CacheReader, CacheWriter):
             limit=top_k,
             with_payload=True,
         )
+        if not results:
+            return []
+
+        # Batch all Redis lookups into a single pipelined round-trip instead of
+        # issuing 2*N sequential GETs (one quality + one hit_count per neighbor).
+        cache_ids = [str(r.id) for r in results]
+        quality_keys = [QUALITY_KEY.format(cache_id=cid) for cid in cache_ids]
+        hit_count_keys = [HIT_COUNT_KEY.format(cache_id=cid) for cid in cache_ids]
+
+        async with self._redis.client.pipeline(transaction=False) as pipe:
+            await pipe.mget(quality_keys)
+            await pipe.mget(hit_count_keys)
+            quality_raws, hit_count_raws = await pipe.execute()
+
         hits: List[CacheHit] = []
-        for r in results:
+        for i, r in enumerate(results):
             payload = r.payload or {}
-            cache_id = str(r.id)
-            quality = await self._get_quality(cache_id)
-            hit_count = await self._get_hit_count(cache_id)
+
+            q_raw = quality_raws[i] if quality_raws else None
+            try:
+                quality = float(q_raw) if q_raw is not None else 1.0
+            except (ValueError, TypeError):
+                quality = 1.0
+
+            hc_raw = hit_count_raws[i] if hit_count_raws else None
+            try:
+                hit_count = int(hc_raw) if hc_raw is not None else 0
+            except (ValueError, TypeError):
+                hit_count = 0
+
             hits.append(
                 CacheHit(
-                    id=cache_id,
+                    id=cache_ids[i],
                     query=payload.get("query", ""),
                     response=payload.get("response", ""),
                     score=float(r.score),

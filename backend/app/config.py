@@ -59,6 +59,31 @@ class Settings(BaseSettings):
         le=1.0,
         description="Blend: (1-w)*dense + w*lexical overlap.",
     )
+    cache_rerank_quality_weight: float = Field(
+        default=0.08,
+        ge=0.0,
+        le=0.3,
+        description=(
+            "Weight given to validated quality score during reranking. "
+            "Entries with quality < 0.5 are penalised; high-quality entries get a boost. "
+            "Combined quality+popularity weights must leave ≥0.5 for the base dense+lexical score."
+        ),
+    )
+    cache_rerank_popularity_weight: float = Field(
+        default=0.04,
+        ge=0.0,
+        le=0.2,
+        description=(
+            "Weight given to log-scaled hit count during reranking. "
+            "Entries that have been successfully served many times get a small boost, "
+            "capped at POPULARITY_CAP hits to avoid winner-takes-all effects."
+        ),
+    )
+    cache_rerank_popularity_cap: float = Field(
+        default=50.0,
+        gt=0.0,
+        description="Hit count at which the popularity boost saturates (log scale).",
+    )
 
     validator_cache_ttl_seconds: int = Field(
         default=3600,
