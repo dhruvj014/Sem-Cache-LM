@@ -76,6 +76,12 @@ class CacheHit(BaseModel):
     quality_score: float = 1.0
 
 
+class Citation(BaseModel):
+    file_path: str
+    score: float
+    snippet: str
+
+
 class QueryResponse(BaseModel):
     response: str
     source: ResponseSource
@@ -88,6 +94,7 @@ class QueryResponse(BaseModel):
     quality_score: Optional[float] = None
     hit_count: Optional[int] = None
     validation_confidence: Optional[float] = None
+    citations: list[Citation] = Field(default_factory=list)
 
 
 # ---- Decision domain ----

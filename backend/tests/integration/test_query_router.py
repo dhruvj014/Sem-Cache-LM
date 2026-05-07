@@ -1,6 +1,6 @@
 """Integration test for QueryRouterService using fake collaborators.
 Verifies the full decision pipeline: cache hit, gray-zone validate (true positive),
-gray-zone validate (false hit -> LLM fallback), and cold cache LLM fallback."""
+gray-zone validate (false hit -> RAG fallback), and cold-cache RAG fallback."""
 
 from typing import List, Optional
 
@@ -19,6 +19,7 @@ from app.services.base.cache_base import CacheReader, CacheWriter
 from app.services.base.embedding_base import EmbeddingService
 from app.services.base.llm_base import LLMClient
 from app.services.query_router import QueryRouterService
+from app.services.rag_service import RagCitation, RagResult
 from app.services.session_context import NullSessionContextService
 
 
@@ -103,6 +104,25 @@ class FakeValidator:
         )
 
 
+class FakeRag:
+    def __init__(self, response: str = "RAG-response"):
+        self.calls = 0
+        self._response = response
+
+    async def answer(self, query: str) -> RagResult:
+        self.calls += 1
+        return RagResult(
+            response=self._response,
+            citations=[
+                RagCitation(
+                    file_path="backend/app/services/query_router.py",
+                    score=0.88,
+                    snippet="class QueryRouterService: ...",
+                )
+            ],
+        )
+
+
 class FakeAnalytics:
     def __init__(self):
         self.records = []
@@ -122,12 +142,13 @@ def _hit(score, cache_id="cid-1", quality=1.0):
     )
 
 
-def _build(settings, hits, validator_valid=True, llm=None):
+def _build(settings, hits, validator_valid=True, llm=None, rag=None):
     embedder = FakeEmbedder()
     cache = FakeCache(hits)
     agent = AgentDecisionLayer(DecisionThresholds(settings))
     validator = FakeValidator(is_valid=validator_valid)
     llm = llm or FakeLLM()
+    rag = rag or FakeRag()
     analytics = FakeAnalytics()
     router = QueryRouterService(
         settings=settings,
@@ -137,37 +158,44 @@ def _build(settings, hits, validator_valid=True, llm=None):
         agent=agent,
         false_hit_detector=validator,
         llm=llm,
+        rag=rag,
         analytics=analytics,
         session_context=NullSessionContextService(),
     )
-    return router, embedder, cache, validator, llm, analytics
+    return router, embedder, cache, validator, llm, rag, analytics
 
 
 @pytest.mark.asyncio
 async def test_cold_cache_falls_back_to_llm(settings):
-    router, embedder, cache, _, llm, analytics = _build(settings, hits=[])
+    router, embedder, cache, _, llm, rag, analytics = _build(settings, hits=[])
     resp = await router.handle_query("first query", "s1")
     assert resp.source == ResponseSource.LLM
     assert resp.agent_action == AgentAction.LLM_FALLBACK
-    assert llm.calls == 1
+    assert rag.calls == 1
+    assert llm.calls == 0
     assert len(cache.stored) == 1
     assert resp.cache_id == cache.stored[0]["id"]
+    assert cache.stored[0]["response"] == "RAG-response"
+    assert len(resp.citations) == 1
+    assert resp.citations[0].file_path == "backend/app/services/query_router.py"
     assert len(analytics.records) == 1
 
 
 @pytest.mark.asyncio
 async def test_high_similarity_returns_cache_hit(settings):
-    router, _, cache, _, llm, _ = _build(settings, hits=[_hit(0.96)])
+    router, _, cache, _, llm, rag, _ = _build(settings, hits=[_hit(0.96)])
     resp = await router.handle_query("repeat query", "s1")
     assert resp.source == ResponseSource.CACHE
     assert resp.agent_action == AgentAction.CACHE_HIT
     assert llm.calls == 0
+    assert rag.calls == 0
     assert cache.incremented == ["cid-1"]
+    assert resp.citations == []
 
 
 @pytest.mark.asyncio
 async def test_gray_zone_validates_and_serves_cache(settings):
-    router, _, cache, validator, llm, _ = _build(
+    router, _, cache, validator, llm, rag, _ = _build(
         settings, hits=[_hit(0.81)], validator_valid=True
     )
     resp = await router.handle_query("paraphrase", "s1")
@@ -175,20 +203,25 @@ async def test_gray_zone_validates_and_serves_cache(settings):
     assert resp.agent_action == AgentAction.VALIDATE
     assert validator.calls == 1
     assert llm.calls == 0
+    assert rag.calls == 0
     assert cache.incremented == ["cid-1"]
     assert len(cache.stored) == 1
     assert cache.stored[0]["query"] == "paraphrase"
     assert cache.stored[0]["response"] == "cached r"
+    assert resp.citations == []
 
 
 @pytest.mark.asyncio
-async def test_gray_zone_false_hit_falls_back_to_llm(settings):
-    router, _, cache, validator, llm, _ = _build(
+async def test_gray_zone_false_hit_falls_back_to_rag(settings):
+    router, _, cache, validator, llm, rag, _ = _build(
         settings, hits=[_hit(0.81)], validator_valid=False
     )
     resp = await router.handle_query("different topic, similar wording", "s1")
     assert resp.source == ResponseSource.FALSE_HIT_FALLBACK
     assert resp.agent_action == AgentAction.LLM_FALLBACK
     assert validator.calls == 1
-    assert llm.calls == 1
+    assert rag.calls == 1
+    assert llm.calls == 0
     assert len(cache.stored) == 1
+    assert len(resp.citations) == 1
+    assert resp.citations[0].file_path == "backend/app/services/query_router.py"
