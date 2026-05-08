@@ -7,7 +7,7 @@ import pytest
 
 from services.gateway.app.config import Settings
 from shared.contracts.internal import InternalRagRetrieveResponse
-from services.gateway.app.services.http_rag_client import HttpRagClient
+from shared.clients.http.rag import HttpRagClient
 
 
 def _settings() -> Settings:

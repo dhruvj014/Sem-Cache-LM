@@ -1,10 +1,10 @@
 import hashlib
 import re
 
-from services.gateway.app.config import Settings
+from shared.config.settings import Settings
+from shared.domain.model_providers import LLMClient
 from shared.infra.redis_client import RedisInfrastructure
 from shared.models.schemas import ValidationResult
-from shared.domain.model_providers import LLMClient
 from shared.observability.logger import get_logger
 
 logger = get_logger(__name__)
@@ -27,11 +27,6 @@ VALIDATOR_CACHE_PREFIX = "semcache:validator:v1"
 
 
 class FalseHitDetector:
-    """Validates a borderline cache match by asking the LLM to judge whether
-    the cached response actually answers the new query. Independent strategy
-    component (open/closed) — swap in another validator without touching
-    the agent decision layer."""
-
     def __init__(
         self,
         settings: Settings,
@@ -75,7 +70,7 @@ class FalseHitDetector:
                         is_valid=result.is_valid,
                     )
                     return result
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 logger.warning("false_hit.cache_read_error", error=str(e))
 
         prompt = (
@@ -87,7 +82,7 @@ class FalseHitDetector:
         )
         try:
             raw_llm = await self._llm.generate(prompt=prompt, system=VALIDATION_SYSTEM_PROMPT)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             logger.warning("false_hit.llm_error", error=str(e))
             return ValidationResult(
                 is_valid=False,
@@ -121,7 +116,7 @@ class FalseHitDetector:
                     self._settings.validator_cache_ttl_seconds,
                     result.model_dump_json(),
                 )
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 logger.warning("false_hit.cache_write_error", error=str(e))
 
         return result

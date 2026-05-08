@@ -7,7 +7,7 @@ from httpx import AsyncClient, MockTransport
 
 from services.gateway.app.config import Settings
 from shared.models.enums import AgentAction, ResponseSource
-from services.gateway.app.services.http_analytics_client import HttpAnalyticsClient
+from shared.clients.http.analytics import HttpAnalyticsClient
 
 
 def _settings() -> Settings:

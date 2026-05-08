@@ -10,6 +10,7 @@ Current service entrypoints:
 - Cache: `services/cache/app/main.py`
 - Analytics: `services/analytics/app/main.py`
 - AI inference: `services/ai/app/main.py`
+- Orchestrator: `services/orchestrator/app/main.py`
 
 Run locally from repo root:
 - `PYTHONPATH=backend uvicorn services.gateway.app.main:app --port 8000 --reload`
@@ -17,4 +18,5 @@ Run locally from repo root:
 - `PYTHONPATH=backend uvicorn services.cache.app.main:app --port 8002 --reload`
 - `PYTHONPATH=backend uvicorn services.analytics.app.main:app --port 8003 --reload`
 - `PYTHONPATH=backend uvicorn services.ai.app.main:app --port 8004 --reload`
+- `PYTHONPATH=backend uvicorn services.orchestrator.app.main:app --port 8005 --reload`
 

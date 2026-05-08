@@ -1,6 +1,15 @@
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../api/client.js";
 
+const SERVICE_LABELS = {
+  redis: "Redis",
+  ai_service: "AI Service",
+  cache_service: "Cache Service",
+  rag_service: "RAG Service",
+  analytics_service: "Analytics Service",
+  orchestrator_service: "Orchestrator Service",
+};
+
 function Dot({ ok }) {
   return (
     <span
@@ -26,6 +35,7 @@ export default function SystemMonitorPanel() {
   const s = summary.data;
   const h = health.data;
   const services = h?.services || {};
+  const serviceRows = Object.entries(services);
 
   return (
     <aside className="glass rounded-xl p-4 w-72 flex-shrink-0 self-start sticky top-4">
@@ -65,18 +75,16 @@ export default function SystemMonitorPanel() {
       </div>
 
       <div className="mt-4 border-t border-slate-800 pt-3 space-y-2 text-xs">
-        <div className="flex items-center justify-between">
-          <span className="text-slate-400">Ollama</span>
-          <Dot ok={services.ollama} />
-        </div>
-        <div className="flex items-center justify-between">
-          <span className="text-slate-400">Qdrant</span>
-          <Dot ok={services.qdrant} />
-        </div>
-        <div className="flex items-center justify-between">
-          <span className="text-slate-400">Redis</span>
-          <Dot ok={services.redis} />
-        </div>
+        {serviceRows.length > 0 ? (
+          serviceRows.map(([name, ok]) => (
+            <div className="flex items-center justify-between" key={name}>
+              <span className="text-slate-400">{SERVICE_LABELS[name] || name}</span>
+              <Dot ok={Boolean(ok)} />
+            </div>
+          ))
+        ) : (
+          <div className="text-slate-500">No service health reported</div>
+        )}
       </div>
 
       {h?.status === "degraded" && (

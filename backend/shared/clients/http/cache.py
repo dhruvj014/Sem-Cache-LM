@@ -5,7 +5,7 @@ from typing import Any
 import httpx
 import structlog
 
-from services.gateway.app.config import Settings
+from shared.config.settings import Settings
 from shared.contracts.internal import (
     InternalCacheEvictRequest,
     InternalCacheFeedbackRequest,
@@ -13,13 +13,11 @@ from shared.contracts.internal import (
     InternalCacheSearchRequest,
     InternalCacheStoreRequest,
 )
+from shared.domain.cache_boundary import CacheBoundary
 from shared.models.schemas import CacheEntry, CacheHit, EvictionResult
-from services.gateway.app.services.base.cache_client_base import CacheClient
 
 
-class HttpCacheClient(CacheClient):
-    """Gateway-side client for standalone cache service."""
-
+class HttpCacheClient(CacheBoundary):
     def __init__(self, settings: Settings, http_client: httpx.AsyncClient):
         self._settings = settings
         self._http = http_client
@@ -102,6 +100,16 @@ class HttpCacheClient(CacheClient):
         data = await self._post("/internal/v1/cache/clear", {})
         return int(data.get("deleted_entries", 0))
 
+    async def health(self) -> bool:
+        try:
+            resp = await self._http.get(
+                f"{self._base_url}/api/v1/docs",
+                timeout=min(5.0, self._settings.cache_service_request_timeout_seconds),
+            )
+            return resp.status_code < 500
+        except Exception:
+            return False
+
     async def _post(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
         return await self._request("POST", path, json=payload)
 
@@ -136,4 +144,3 @@ class HttpCacheClient(CacheClient):
         if not data.get("success"):
             raise RuntimeError("cache internal request failed")
         return data.get("data") or {}
-

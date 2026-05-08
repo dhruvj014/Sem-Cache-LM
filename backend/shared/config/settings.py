@@ -271,6 +271,16 @@ class Settings(BaseSettings):
         le=600.0,
         description="Timeout for gateway → AI service HTTP calls.",
     )
+    orchestrator_service_base_url: str = Field(
+        default="http://localhost:8005",
+        description="Base URL for the standalone Orchestrator service.",
+    )
+    orchestrator_service_request_timeout_seconds: float = Field(
+        default=120.0,
+        ge=0.5,
+        le=600.0,
+        description="Timeout for gateway → Orchestrator service HTTP calls.",
+    )
 
     # Async pipeline / Redis Streams
     query_pipeline_async: bool = Field(

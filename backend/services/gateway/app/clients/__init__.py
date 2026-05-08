@@ -1,6 +1,5 @@
-from services.gateway.app.clients.analytics import HttpAnalyticsClient
-from services.gateway.app.clients.cache import HttpCacheClient
-from services.gateway.app.clients.rag import HttpRagClient
+from services.gateway.app.clients.orchestrator import HttpOrchestratorClient
 
-__all__ = ["HttpRagClient", "HttpCacheClient", "HttpAnalyticsClient"]
-
+__all__ = [
+    "HttpOrchestratorClient",
+]

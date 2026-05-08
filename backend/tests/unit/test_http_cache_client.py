@@ -6,7 +6,7 @@ import structlog
 from httpx import AsyncClient, MockTransport
 
 from services.gateway.app.config import Settings
-from services.gateway.app.services.http_cache_client import HttpCacheClient
+from shared.clients.http.cache import HttpCacheClient
 
 
 def _settings() -> Settings:

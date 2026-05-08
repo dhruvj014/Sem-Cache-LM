@@ -1,25 +1,22 @@
 from __future__ import annotations
 
+import time
 from typing import Any, Optional
 
 import httpx
-import time
 import structlog
 
-from services.gateway.app.config import Settings
+from services.rag.app.services.rag_service import RagCitation, RagResult
+from shared.config.settings import Settings
 from shared.contracts.internal import InternalRagRetrieveRequest
 from shared.contracts.internal import InternalRagRetrieveResponse
-from services.rag.app.services.rag_service import RagCitation, RagResult
-from services.gateway.app.services.base.rag_client_base import RagClient
+from shared.domain.rag_ports import RagClient
 from shared.observability.logger import get_logger
-
 
 logger = get_logger(__name__)
 
 
 class HttpRagClient(RagClient):
-    """Gateway-side client for the standalone RAG/Catalog service."""
-
     def __init__(self, settings: Settings, http_client: httpx.AsyncClient):
         self._settings = settings
         self._http = http_client
@@ -70,3 +67,12 @@ class HttpRagClient(RagClient):
         value = ctx.get("correlation_id")
         return str(value) if value else None
 
+    async def health(self) -> bool:
+        try:
+            resp = await self._http.get(
+                f"{self._base_url}/api/v1/docs",
+                timeout=min(5.0, self._settings.rag_service_request_timeout_seconds),
+            )
+            return resp.status_code < 500
+        except Exception:
+            return False

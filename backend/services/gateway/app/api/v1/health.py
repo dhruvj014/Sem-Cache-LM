@@ -1,3 +1,4 @@
+import asyncio
 from fastapi import APIRouter, Request
 
 from services.gateway.app.config import get_settings
@@ -40,11 +41,21 @@ async def health_streams(request: Request):
 async def health(request: Request):
     settings = get_settings()
     redis_ok = await request.app.state.redis.health()
-    ai_ok = await request.app.state.http_ai_client.health()
+    ai_ok, cache_ok, rag_ok, analytics_ok, orchestrator_ok = await asyncio.gather(
+        request.app.state.http_ai_client.health(),
+        request.app.state.cache_boundary.health(),
+        request.app.state.http_rag_client.health(),
+        request.app.state.analytics_boundary.health(),
+        request.app.state.orchestrator_boundary.health(),
+    )
 
     services = {
         "redis": redis_ok,
         "ai_service": ai_ok,
+        "cache_service": cache_ok,
+        "rag_service": rag_ok,
+        "analytics_service": analytics_ok,
+        "orchestrator_service": orchestrator_ok,
     }
     status = "ok" if all(services.values()) else "degraded"
     return ResponseEnvelope.ok(

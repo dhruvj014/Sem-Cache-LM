@@ -5,11 +5,11 @@ from typing import Any
 import httpx
 import structlog
 
-from services.gateway.app.config import Settings
-from shared.models.enums import AgentAction, ResponseSource
+from shared.config.settings import Settings
 from shared.contracts.internal import InternalQueryEvent
+from shared.domain.analytics_ports import AnalyticsClient
+from shared.models.enums import AgentAction, ResponseSource
 from shared.models.schemas import AnalyticsSummary, HistoryResponse
-from services.gateway.app.services.base.analytics_client_base import AnalyticsClient
 
 
 class HttpAnalyticsClient(AnalyticsClient):
@@ -52,6 +52,16 @@ class HttpAnalyticsClient(AnalyticsClient):
     async def reset(self) -> None:
         await self._request("POST", "/internal/v1/reset")
 
+    async def health(self) -> bool:
+        try:
+            resp = await self._http.get(
+                f"{self._base_url}/api/v1/docs",
+                timeout=min(5.0, self._settings.analytics_service_request_timeout_seconds),
+            )
+            return resp.status_code < 500
+        except Exception:
+            return False
+
     async def _request(
         self,
         method: str,
@@ -76,4 +86,3 @@ class HttpAnalyticsClient(AnalyticsClient):
         if not body.get("success"):
             raise RuntimeError("analytics internal request failed")
         return body.get("data") or {}
-

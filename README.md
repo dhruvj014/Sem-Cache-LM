@@ -148,21 +148,17 @@ These tests use fakes and **do not** require Docker or Ollama. Expect all tests 
 ### 6. Run the API
 
 Still in **`backend/`** with venv active:
-
-```bash
-uvicorn services.gateway.app.main:app --reload --port 8000
-```
-
 ### 6.1 Run all backend services (microservice mode)
 
 From repo root:
 
 ```bash
-PYTHONPATH=backend uvicorn services.gateway.app.main:app --port 8000 --reload
-PYTHONPATH=backend uvicorn services.rag.app.main:app --port 8001 --reload
-PYTHONPATH=backend uvicorn services.cache.app.main:app --port 8002 --reload
-PYTHONPATH=backend uvicorn services.analytics.app.main:app --port 8003 --reload
-PYTHONPATH=backend uvicorn services.ai.app.main:app --port 8004 --reload
+uvicorn services.gateway.app.main:app --port 8000 --reload
+uvicorn services.rag.app.main:app --port 8001 --reload
+uvicorn services.cache.app.main:app --port 8002 --reload
+uvicorn services.analytics.app.main:app --port 8003 --reload
+uvicorn services.ai.app.main:app --port 8004 --reload
+uvicorn services.orchestrator.app.main:app --port 8005 --reload
 ```
 
 Smoke checks:
@@ -188,8 +184,9 @@ Then poll status/result:
 curl.exe http://localhost:8000/api/v1/query/<job_id>
 ```
 
-For legacy synchronous behavior, set `QUERY_PIPELINE_ASYNC=false` and
-`GATEWAY_SYNC_QUERY_ENABLED=true`.
+For synchronous behavior, set `QUERY_PIPELINE_ASYNC=false` and
+`GATEWAY_SYNC_QUERY_ENABLED=true`; gateway forwards the sync query to the
+orchestrator internal API (`/internal/v1/query`).
 
 For full curl scenarios (feedback, eviction, analytics), **PowerShell vs cmd quoting**, and numeric expectations on `data.*`, see **[TESTING.md](./TESTING.md)** (sections on manual API and troubleshooting).
 
@@ -226,7 +223,18 @@ ollama pull llama3.1:8b && ollama pull nomic-embed-text
 # Backend
 cd backend && python -m venv venv && . venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements-dev.txt && cp .env.example .env
-pytest tests/ -q && uvicorn services.gateway.app.main:app --reload --port 8000
+pytest tests/ -q 
+uvicorn services.gateway.app.main:app --reload --port 8000
+# RAG service (other terminal)
+uvicorn services.rag.app.main:app --reload --port 8001
+# Cache service (other terminal)
+uvicorn services.cache.app.main:app --reload --port 8002
+# Analytics service (other terminal)
+uvicorn services.analytics.app.main:app --reload --port 8003
+# AI service (other terminal)
+uvicorn services.analytics.app.main:app --reload --port 8004
+# Orchestrator service (other terminal)
+uvicorn services.orchestrator.app.main:app --reload --port 8004
 
 # Frontend (other terminal)
 cd frontend && cp .env.example .env && npm install && npm run dev
@@ -303,7 +311,7 @@ CACHE_SEARCH_TOP_K
 
 Additional commonly tuned vars live in `backend/.env.example`, including:
 
-- service URLs/timeouts (`AI_SERVICE_BASE_URL`, `CACHE_SERVICE_BASE_URL`, `RAG_SERVICE_BASE_URL`, `ANALYTICS_SERVICE_BASE_URL`)
+- service URLs/timeouts (`AI_SERVICE_BASE_URL`, `CACHE_SERVICE_BASE_URL`, `RAG_SERVICE_BASE_URL`, `ANALYTICS_SERVICE_BASE_URL`, `ORCHESTRATOR_SERVICE_BASE_URL`)
 - async pipeline flags (`QUERY_PIPELINE_ASYNC`, `GATEWAY_SYNC_QUERY_ENABLED`, `STREAM_WORKERS_ENABLED`, `STREAM_RECLAIM_MIN_IDLE_MS`)
 - RAG split storage (`RAG_QDRANT_*`, `RAG_REDIS_MANIFEST_PREFIX`)
 
@@ -319,11 +327,12 @@ VITE_API_URL
 semcachelm/
 ├── backend/                FastAPI + services
 │   ├── services/
-│   │   ├── gateway/app/    Public API + orchestration
+│   │   ├── gateway/app/    Public API service
 │   │   ├── cache/app/      Cache boundary service
 │   │   ├── rag/app/        Retrieval + catalog service
 │   │   ├── analytics/app/  Analytics boundary service
-│   │   └── ai/app/         AI inference service
+│   │   ├── ai/app/         AI inference service
+│   │   └── orchestrator/app/ Query orchestration service
 │   ├── shared/             Contracts, models, infra, observability
 │   └── tests/              Unit + integration
 └── frontend/               React + Vite UI
@@ -336,4 +345,4 @@ For more scenarios (eviction, analytics, extended troubleshooting), see **[TESTI
 - `backend/app` was removed as part of the services/shared cutover.
 - Old startup commands like `uvicorn app.main:app` are no longer valid.
 - Use `services.*` module paths for runtime entrypoints and imports.
-- Tests and scripts should import from `services.gateway.app.*`, `services.<service>.app.*`, and `shared.*`.
+- Tests and scripts should import from `services.gateway.app.*`, `services.orchestrator.app.*`, `services.<service>.app.*`, and `shared.*`.

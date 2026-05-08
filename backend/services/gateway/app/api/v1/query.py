@@ -3,7 +3,8 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 
-from services.gateway.app.dependencies import get_query_router
+from services.gateway.app.dependencies import get_orchestrator_boundary
+from services.gateway.app.clients.orchestrator import HttpOrchestratorClient
 from shared.contracts.streams import SCHEMA_VERSION_V1, QuerySubmittedV1
 from shared.infra.stream_runtime import xadd_model
 from shared.jobs.redis_jobs import decode_job_view, job_create_pending, job_get_all
@@ -14,7 +15,6 @@ from shared.models.schemas import (
     QueryResponse,
     ResponseEnvelope,
 )
-from services.gateway.app.services.query_router import QueryRouterService
 from shared.observability.logger import get_logger
 from shared.stream_topology import STREAM_QUERY_COMMANDS_V1
 
@@ -26,7 +26,7 @@ router = APIRouter()
 async def submit_query(
     request: QueryRequest,
     raw_request: Request,
-    service: QueryRouterService = Depends(get_query_router),
+    orchestrator: HttpOrchestratorClient = Depends(get_orchestrator_boundary),
 ):
     settings = raw_request.app.state.settings
     try:
@@ -68,7 +68,7 @@ async def submit_query(
                 detail="Synchronous query disabled; enable QUERY_PIPELINE_ASYNC or GATEWAY_SYNC_QUERY_ENABLED.",
             )
 
-        result = await service.handle_query(
+        result = await orchestrator.handle_query(
             request.query,
             request.session_id,
             similarity_hit_threshold=request.similarity_hit_threshold,

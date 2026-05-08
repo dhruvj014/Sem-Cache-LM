@@ -1,4 +1,4 @@
-"""Consumes QuerySubmitted from Redis Streams and runs the query_router decision graph via stream RPC."""
+"""Consumes QuerySubmitted from Redis Streams and runs stream RPC orchestration."""
 
 from __future__ import annotations
 
@@ -9,16 +9,7 @@ from typing import List
 
 from redis.exceptions import ResponseError
 
-from services.gateway.app.config import Settings
-from services.gateway.app.services.agent_decision import AgentDecisionLayer
-from services.gateway.app.services.false_hit_detector import FalseHitDetector
-from services.gateway.app.services.retrieval_rerank import rerank_hits_with_lexical_blend
-from services.gateway.app.services.retrieval_text import (
-    build_index_text_for_vector,
-    build_search_text_for_vector,
-)
-from services.gateway.app.services.session_context import SessionContextService
-from services.gateway.app.utils.timer import timer
+from shared.config.settings import Settings
 from shared.contracts.streams import (
     SCHEMA_VERSION_V1,
     AiCommandKind,
@@ -50,6 +41,14 @@ from shared.jobs.redis_jobs import (
 from shared.models.enums import AgentAction, ResponseSource
 from shared.models.schemas import CacheHit, Citation, QueryResponse
 from shared.observability.logger import get_logger
+from services.orchestrator.app.domain.agent_decision import AgentDecisionLayer
+from services.orchestrator.app.domain.false_hit_detector import FalseHitDetector
+from services.orchestrator.app.domain.retrieval_rerank import rerank_hits_with_lexical_blend
+from services.orchestrator.app.domain.retrieval_text import (
+    build_index_text_for_vector,
+    build_search_text_for_vector,
+)
+from services.orchestrator.app.domain.session_context import SessionContextService
 from shared.stream_topology import (
     STREAM_AI_COMMANDS_V1,
     STREAM_ANALYTICS_EVENTS_V1,
@@ -59,6 +58,7 @@ from shared.stream_topology import (
     STREAM_QUERY_RESULTS_V1,
     STREAM_RAG_COMMANDS_V1,
 )
+from shared.utils.timer import timer
 
 logger = get_logger(__name__)
 
@@ -357,20 +357,13 @@ class QueryStreamOrchestrator:
                     hit_threshold=submitted.similarity_hit_threshold,
                     gray_zone_low=submitted.similarity_gray_zone_low,
                 )
-
                 response_payload: QueryResponse
-
                 if decision.action == AgentAction.CACHE_HIT and decision.matched_hit:
                     hit = decision.matched_hit
                     try:
                         await self._cache_increment(correlation_id, job_id, hit.id)
                     except Exception as e:  # noqa: BLE001
-                        logger.warning(
-                            "orchestrator.increment_hit_failed",
-                            cache_id=hit.id,
-                            error_type=type(e).__name__,
-                            error_repr=repr(e),
-                        )
+                        logger.warning("orchestrator.increment_hit_failed", cache_id=hit.id, error_repr=repr(e))
                     response_payload = QueryResponse(
                         response=hit.response,
                         source=ResponseSource.CACHE,
@@ -384,7 +377,6 @@ class QueryStreamOrchestrator:
                         hit_count=hit.hit_count + 1,
                         citations=[],
                     )
-
                 elif decision.action == AgentAction.VALIDATE and decision.matched_hit:
                     hit = decision.matched_hit
                     validation = await self._validator.validate(
@@ -397,12 +389,7 @@ class QueryStreamOrchestrator:
                         try:
                             await self._cache_increment(correlation_id, job_id, hit.id)
                         except Exception as e:  # noqa: BLE001
-                            logger.warning(
-                                "orchestrator.increment_hit_failed",
-                                cache_id=hit.id,
-                                error_type=type(e).__name__,
-                                error_repr=repr(e),
-                            )
+                            logger.warning("orchestrator.increment_hit_failed", cache_id=hit.id, error_repr=repr(e))
                         idx_text = build_index_text_for_vector(
                             query,
                             hit.response,
@@ -416,25 +403,16 @@ class QueryStreamOrchestrator:
                                 query=query,
                                 embedding=idx_emb,
                                 response=hit.response,
-                                metadata={
-                                    "session_id": session_id,
-                                    "validated_from_cache_id": hit.id,
-                                },
+                                metadata={"session_id": session_id, "validated_from_cache_id": hit.id},
                             )
                         except Exception as e:  # noqa: BLE001
-                            logger.warning(
-                                "orchestrator.store_failed",
-                                error_type=type(e).__name__,
-                                error_repr=repr(e),
-                            )
+                            logger.warning("orchestrator.store_failed", error_repr=repr(e))
                         response_payload = QueryResponse(
                             response=hit.response,
                             source=ResponseSource.VALIDATED_CACHE,
                             cache_id=hit.id,
                             similarity_score=hit.score,
-                            decision_reason=(
-                                f"{decision.reason} Validator: {validation.reason}"
-                            ),
+                            decision_reason=f"{decision.reason} Validator: {validation.reason}",
                             latency_ms=0.0,
                             agent_action=AgentAction.VALIDATE,
                             matched_query=hit.query,
@@ -450,11 +428,7 @@ class QueryStreamOrchestrator:
                             if rag_result.answer
                             else await self._generate_plain(correlation_id, job_id, query)
                         )
-                        idx_text = build_index_text_for_vector(
-                            query,
-                            llm_response,
-                            self._settings.cache_index_response_max_chars,
-                        )
+                        idx_text = build_index_text_for_vector(query, llm_response, self._settings.cache_index_response_max_chars)
                         idx_emb = await self._embed(correlation_id, job_id, idx_text)
                         new_id = None
                         try:
@@ -466,33 +440,23 @@ class QueryStreamOrchestrator:
                                 response=llm_response,
                                 metadata={
                                     "session_id": session_id,
-                                    "rag_citations": [
-                                        str(x.get("file_path", ""))
-                                        for x in rag_result.citations
-                                    ],
+                                    "rag_citations": [str(x.get("file_path", "")) for x in rag_result.citations],
                                 },
                             )
                         except Exception as e:  # noqa: BLE001
-                            logger.warning(
-                                "orchestrator.store_failed",
-                                error_type=type(e).__name__,
-                                error_repr=repr(e),
-                            )
+                            logger.warning("orchestrator.store_failed", error_repr=repr(e))
                         response_payload = QueryResponse(
                             response=llm_response,
                             source=ResponseSource.FALSE_HIT_FALLBACK,
                             cache_id=new_id,
                             similarity_score=hit.score,
-                            decision_reason=(
-                                f"False hit detected. {validation.reason} Falling back to RAG synthesis."
-                            ),
+                            decision_reason=f"False hit detected. {validation.reason} Falling back to RAG synthesis.",
                             latency_ms=0.0,
                             agent_action=AgentAction.LLM_FALLBACK,
                             matched_query=hit.query,
                             validation_confidence=validation.confidence,
                             citations=self._citations(rag_result),
                         )
-
                 else:
                     rag_result = await self._rag_answer(correlation_id, job_id, rag_query)
                     llm_response = (
@@ -501,11 +465,7 @@ class QueryStreamOrchestrator:
                         else await self._generate_plain(correlation_id, job_id, query)
                     )
                     top_score = hits[0].score if hits else 0.0
-                    idx_text = build_index_text_for_vector(
-                        query,
-                        llm_response,
-                        self._settings.cache_index_response_max_chars,
-                    )
+                    idx_text = build_index_text_for_vector(query, llm_response, self._settings.cache_index_response_max_chars)
                     idx_emb = await self._embed(correlation_id, job_id, idx_text)
                     new_id = None
                     try:
@@ -517,18 +477,11 @@ class QueryStreamOrchestrator:
                             response=llm_response,
                             metadata={
                                 "session_id": session_id,
-                                "rag_citations": [
-                                    str(x.get("file_path", ""))
-                                    for x in rag_result.citations
-                                ],
+                                "rag_citations": [str(x.get("file_path", "")) for x in rag_result.citations],
                             },
                         )
                     except Exception as e:  # noqa: BLE001
-                        logger.warning(
-                            "orchestrator.store_failed",
-                            error_type=type(e).__name__,
-                            error_repr=repr(e),
-                        )
+                        logger.warning("orchestrator.store_failed", error_repr=repr(e))
                     response_payload = QueryResponse(
                         response=llm_response,
                         source=ResponseSource.LLM,
@@ -545,20 +498,17 @@ class QueryStreamOrchestrator:
                     )
 
             response_payload.latency_ms = round(total.elapsed_ms, 2)
-
             await self._session.set(
                 session_id,
                 query,
                 response_payload.response,
                 self._settings.cache_session_snippet_max_chars,
             )
-
             await job_mark_completed(
                 self._r,
                 job_id,
                 result_json=response_payload.model_dump_json(),
             )
-
             qc = str(uuid.uuid4())
             done = QueryCompletedV1(
                 schema_version=SCHEMA_VERSION_V1,
@@ -569,10 +519,8 @@ class QueryStreamOrchestrator:
                 response_json=response_payload.model_dump_json(),
             )
             await xadd_model(self._r, STREAM_QUERY_RESULTS_V1, done)
-
             if self._settings.analytics_via_stream:
                 await self._publish_analytics(submitted, response_payload)
-
             await self._emit_obs(
                 correlation_id=correlation_id,
                 job_id=job_id,
@@ -580,7 +528,6 @@ class QueryStreamOrchestrator:
                 event_type="step_completed",
                 step="job_complete",
             )
-
         finally:
             self._current_job_id = None
             self._current_correlation_id = None
@@ -594,11 +541,7 @@ class QueryStreamOrchestrator:
             await self._execute_job(submitted)
             await r.xack(stream, group, msg_id)
         except Exception as e:  # noqa: BLE001
-            logger.exception(
-                "orchestrator.job_failed",
-                job_id=submitted.job_id,
-                error=str(e),
-            )
+            logger.exception("orchestrator.job_failed", job_id=submitted.job_id, error=str(e))
             await job_mark_failed(r, submitted.job_id, error=str(e))
             await self._emit_obs(
                 correlation_id=submitted.correlation_id,

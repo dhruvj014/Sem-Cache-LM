@@ -5,15 +5,12 @@ from typing import Any, List
 import httpx
 import structlog
 
-from services.gateway.app.config import Settings
+from shared.config.settings import Settings
 from shared.contracts.internal import InternalEmbedRequest, InternalGenerateRequest
-from shared.domain.model_providers import EmbeddingService
-from shared.domain.model_providers import LLMClient
+from shared.domain.model_providers import EmbeddingService, LLMClient
 
 
 class HttpAIClient(EmbeddingService, LLMClient):
-    """Calls the standalone AI inference service over HTTP (gateway stays Ollama-free)."""
-
     def __init__(self, settings: Settings, http_client: httpx.AsyncClient):
         self._settings = settings
         self._http = http_client

@@ -1,21 +1,24 @@
 from typing import Protocol
 
-from services.gateway.app.config import Settings
+from shared.domain.cache_boundary import CacheBoundary
+from shared.domain.rag_ports import RagClient
+from shared.config.settings import Settings
+from shared.domain.model_providers import EmbeddingService, LLMClient
 from shared.models.enums import AgentAction, ResponseSource
 from shared.models.schemas import Citation, QueryResponse
-from services.gateway.app.services.agent_decision import AgentDecisionLayer
-from services.gateway.app.services.base.cache_client_base import CacheClient
-from shared.domain.cache_ports import CacheReader, CacheWriter
-from shared.domain.model_providers import EmbeddingService, LLMClient
-from services.gateway.app.services.false_hit_detector import FalseHitDetector
-from services.gateway.app.services.retrieval_rerank import rerank_hits_with_lexical_blend
-from services.gateway.app.services.retrieval_text import (
+from shared.observability.logger import get_logger
+from services.orchestrator.app.domain.agent_decision import AgentDecisionLayer
+from services.orchestrator.app.domain.false_hit_detector import FalseHitDetector
+from services.orchestrator.app.domain.retrieval_rerank import rerank_hits_with_lexical_blend
+from services.orchestrator.app.domain.retrieval_text import (
     build_index_text_for_vector,
     build_search_text_for_vector,
 )
-from services.gateway.app.services.session_context import NullSessionContextService, SessionContextService
-from shared.observability.logger import get_logger
-from services.gateway.app.utils.timer import timer
+from services.orchestrator.app.domain.session_context import (
+    NullSessionContextService,
+    SessionContextService,
+)
+from shared.utils.timer import timer
 
 logger = get_logger(__name__)
 
@@ -25,20 +28,16 @@ class AnalyticsPublishPort(Protocol):
 
 
 class QueryRouterService:
-    """Top-level orchestrator. Receives all dependencies via constructor
-    injection (Dependency Inversion). Knows about CacheReader and
-    CacheWriter as separate roles."""
-
     def __init__(
         self,
         settings: Settings,
         embedder: EmbeddingService,
-        cache_reader: CacheClient,
-        cache_writer: CacheClient,
+        cache_reader: CacheBoundary,
+        cache_writer: CacheBoundary,
         agent: AgentDecisionLayer,
         false_hit_detector: FalseHitDetector,
         llm: LLMClient,
-        rag,
+        rag: RagClient | None,
         analytics_publisher: AnalyticsPublishPort | None = None,
         session_context: SessionContextService | NullSessionContextService | None = None,
     ):
@@ -98,7 +97,6 @@ class QueryRouterService:
             )
 
             response_payload: QueryResponse
-
             if decision.action == AgentAction.CACHE_HIT and decision.matched_hit:
                 hit = decision.matched_hit
                 try:
@@ -123,7 +121,6 @@ class QueryRouterService:
                     hit_count=hit.hit_count + 1,
                     citations=[],
                 )
-
             elif decision.action == AgentAction.VALIDATE and decision.matched_hit:
                 hit = decision.matched_hit
                 validation = await self._validator.validate(
@@ -169,9 +166,7 @@ class QueryRouterService:
                         source=ResponseSource.VALIDATED_CACHE,
                         cache_id=hit.id,
                         similarity_score=hit.score,
-                        decision_reason=(
-                            f"{decision.reason} Validator: {validation.reason}"
-                        ),
+                        decision_reason=f"{decision.reason} Validator: {validation.reason}",
                         latency_ms=0.0,
                         agent_action=AgentAction.VALIDATE,
                         matched_query=hit.query,
@@ -237,7 +232,6 @@ class QueryRouterService:
                             else []
                         ),
                     )
-
             else:
                 rag_result = await self._rag.answer(rag_query) if self._rag else None
                 llm_response = (
@@ -300,7 +294,6 @@ class QueryRouterService:
                 )
 
         response_payload.latency_ms = round(total.elapsed_ms, 2)
-
         await self._session.set(
             session_id,
             query,
@@ -310,9 +303,7 @@ class QueryRouterService:
 
         if self._analytics_publisher is not None:
             try:
-                await self._analytics_publisher.publish(
-                    query=query, response=response_payload
-                )
+                await self._analytics_publisher.publish(query=query, response=response_payload)
             except Exception as e:  # noqa: BLE001
                 logger.warning("analytics.stream_publish_failed", error=str(e))
 

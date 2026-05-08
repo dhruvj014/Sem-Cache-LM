@@ -10,8 +10,6 @@ CTX_KEY = "semcache:session_ctx:{session_id}"
 
 
 class SessionContextService:
-    """Stores short-lived context so follow-up questions embed closer to prior answers."""
-
     def __init__(self, redis_infra: RedisInfrastructure, ttl_seconds: int = 86_400):
         self._r = redis_infra.client
         self._ttl = ttl_seconds
@@ -37,7 +35,7 @@ class SessionContextService:
     ) -> None:
         snip = (last_response or "").strip()
         if max_snippet_chars > 0 and len(snip) > max_snippet_chars:
-            snip = snip[:max_snippet_chars] + "…"
+            snip = snip[:max_snippet_chars] + "..."
         blob = json.dumps(
             {"q": (last_query or "").strip(), "snip": snip},
             ensure_ascii=False,
@@ -50,8 +48,6 @@ class SessionContextService:
 
 
 class NullSessionContextService:
-    """No-op for tests."""
-
     async def get(self, session_id: str) -> tuple[str | None, str | None]:
         return None, None
 

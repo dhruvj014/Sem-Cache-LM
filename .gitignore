@@ -22,3 +22,13 @@ frontend/.env
 .DS_Store
 .idea/
 .vscode/
+
+# LlamaIndex RAG
+backend/rag_index/
+backend/rag_repo_cache/
+backend/rag_catalog/
+backend/.rag_index/
+backend/.rag_repo_cache/
+backend/.rag_catalog/
+
+Makerfile

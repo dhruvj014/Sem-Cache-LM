@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Depends, Query
 
 from services.gateway.app.dependencies import get_analytics_service
+from shared.domain.analytics_ports import AnalyticsClient
 from shared.models.schemas import AnalyticsSummary, HistoryResponse, ResponseEnvelope
-from services.gateway.app.services.base.analytics_client_base import AnalyticsClient
 
 router = APIRouter()
 

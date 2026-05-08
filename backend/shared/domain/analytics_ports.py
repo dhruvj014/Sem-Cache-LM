@@ -31,4 +31,3 @@ class AnalyticsClient(ABC):
     @abstractmethod
     async def reset(self) -> None:
         ...
-

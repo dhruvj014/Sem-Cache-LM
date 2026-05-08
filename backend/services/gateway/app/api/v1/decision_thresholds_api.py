@@ -6,7 +6,7 @@ from shared.models.schemas import (
     DecisionThresholdsUpdate,
     ResponseEnvelope,
 )
-from services.gateway.app.services.decision_thresholds import DecisionThresholds
+from shared.domain.decision_thresholds import DecisionThresholds
 
 router = APIRouter()
 

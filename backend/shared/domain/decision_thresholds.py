@@ -2,7 +2,7 @@
 
 from threading import Lock
 
-from services.gateway.app.config import Settings
+from shared.config.settings import Settings
 
 
 class DecisionThresholds:

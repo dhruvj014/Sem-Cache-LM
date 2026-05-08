@@ -6,6 +6,7 @@ from typing import List
 
 import pytest
 
+from shared.domain.decision_thresholds import DecisionThresholds
 from shared.models.enums import AgentAction, ResponseSource
 from shared.models.schemas import (
     CacheHit,
@@ -13,13 +14,12 @@ from shared.models.schemas import (
     QueryResponse,
     ValidationResult,
 )
-from services.gateway.app.services.agent_decision import AgentDecisionLayer
-from services.gateway.app.services.decision_thresholds import DecisionThresholds
+from services.orchestrator.app.domain.agent_decision import AgentDecisionLayer
 from shared.domain.cache_ports import CacheReader, CacheWriter
 from shared.domain.model_providers import EmbeddingService, LLMClient
-from services.gateway.app.services.query_router import QueryRouterService
+from services.orchestrator.app.query_router import QueryRouterService
 from services.rag.app.services.rag_service import RagCitation, RagResult
-from services.gateway.app.services.session_context import NullSessionContextService
+from services.orchestrator.app.domain.session_context import NullSessionContextService
 
 
 class FakeEmbedder(EmbeddingService):

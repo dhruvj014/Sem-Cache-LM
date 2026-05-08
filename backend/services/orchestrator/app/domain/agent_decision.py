@@ -1,23 +1,15 @@
 from typing import List, Optional
 
+from shared.domain.decision_thresholds import DecisionThresholds
 from shared.models.enums import AgentAction
 from shared.models.schemas import CacheHit, DecisionResult
-from services.gateway.app.services.decision_thresholds import DecisionThresholds
 from shared.observability.logger import get_logger
 
 logger = get_logger(__name__)
 
 
 class AgentDecisionLayer:
-    """Strategy-driven decision layer.
-
-    Threshold-based policy:
-      similarity >= hit_threshold       -> CACHE_HIT
-      gray_zone_low <= sim < hit_threshold -> VALIDATE
-      similarity < gray_zone_low        -> LLM_FALLBACK
-
-    Depends only on CacheReader (interface segregation): receives the
-    already-fetched top-k hits, never touches the cache itself."""
+    """Strategy-driven decision layer."""
 
     def __init__(self, thresholds: DecisionThresholds):
         self._thresholds = thresholds
@@ -63,7 +55,6 @@ class AgentDecisionLayer:
                 f"({gray_low:.2f}). Fall back to LLM."
             )
 
-        # Quality penalty: very low quality should never CACHE_HIT directly.
         if action == AgentAction.CACHE_HIT and top.quality_score < 0.4:
             action = AgentAction.VALIDATE
             reason += f" Demoted to VALIDATE due to low quality_score={top.quality_score:.2f}."
@@ -78,8 +69,8 @@ class AgentDecisionLayer:
         logger.info(
             "agent.decision",
             action=action.value,
-            similarity=sim,
             cache_id=top.id,
-            quality=top.quality_score,
+            confidence=sim,
+            reason=reason,
         )
         return result

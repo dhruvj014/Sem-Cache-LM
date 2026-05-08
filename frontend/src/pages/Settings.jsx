@@ -1,6 +1,15 @@
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../api/client.js";
 
+const SERVICE_LABELS = {
+  redis: "Redis",
+  ai_service: "AI Service",
+  cache_service: "Cache Service",
+  rag_service: "RAG Service",
+  analytics_service: "Analytics Service",
+  orchestrator_service: "Orchestrator Service",
+};
+
 export default function Settings() {
   const { data } = useQuery({ queryKey: ["health"], queryFn: () => api.health() });
   const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
@@ -38,7 +47,7 @@ export default function Settings() {
         {data?.services
           ? Object.entries(data.services).map(([k, v]) => (
               <div className="flex justify-between" key={k}>
-                <span className="text-slate-400">{k}</span>
+                <span className="text-slate-400">{SERVICE_LABELS[k] || k}</span>
                 <span className={`code ${v ? "text-emerald-300" : "text-rose-300"}`}>
                   {v ? "online" : "offline"}
                 </span>

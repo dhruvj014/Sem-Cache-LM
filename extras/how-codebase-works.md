@@ -7,7 +7,7 @@ This document explains how SemCacheLM is organized today, what each backend serv
 SemCacheLM is built as a **service-oriented backend** plus a React frontend:
 
 - `frontend/`: user interface (Vite + React)
-- `backend/services/gateway`: public API + orchestration
+- `backend/services/gateway`: public API facade
 - `backend/services/cache`: semantic cache boundary service
 - `backend/services/rag`: retrieval and catalog service
 - `backend/services/analytics`: analytics/event boundary service
@@ -20,17 +20,25 @@ At runtime, the gateway is the entrypoint for client traffic (`/api/v1/*`) and c
 
 ### Gateway (`backend/services/gateway`)
 
-Role: public API and orchestration.
+Role: public API facade and boundary routing.
 
 Important files:
 
 - `backend/services/gateway/app/main.py`: FastAPI app startup, dependency wiring, router registration.
-- `backend/services/gateway/app/api/v1/query.py`: `POST /api/v1/query`.
-- `backend/services/gateway/app/services/query_router.py`: query orchestration and decision logic.
-- `backend/services/gateway/app/services/http_cache_client.py`: HTTP client to cache service.
-- `backend/services/gateway/app/services/http_rag_client.py`: HTTP client to RAG service.
-- `backend/services/gateway/app/services/http_analytics_client.py`: HTTP client to analytics service.
+- `backend/services/gateway/app/api/v1/query.py`: submit async jobs and poll job status.
+- `backend/services/gateway/app/clients/http/orchestrator.py`: sync fallback call to orchestrator service.
 - `backend/services/gateway/app/config.py`: environment-driven settings.
+
+### Orchestrator Service (`backend/services/orchestrator`)
+
+Role: owns query decision/orchestration logic for both async stream worker and sync internal API.
+
+Important files:
+
+- `backend/services/orchestrator/app/main.py`
+- `backend/services/orchestrator/app/query_router.py`
+- `backend/services/orchestrator/app/stream_worker.py`
+- `backend/services/orchestrator/app/api/internal_orchestrator.py`
 
 ### Cache Service (`backend/services/cache`)
 
@@ -89,23 +97,26 @@ Important files:
 The primary path is `POST /api/v1/query` in `backend/services/gateway/app/api/v1/query.py`.
 
 1. Gateway receives `QueryRequest`.
-2. Gateway calls `QueryRouterService.handle_query(...)`.
-3. Query router builds search text (optionally including session context) and requests an embedding.
-4. Gateway calls cache service search and reranks candidate hits.
-5. Agent decision layer chooses one of:
+2. If `QUERY_PIPELINE_ASYNC=true`, gateway writes `QuerySubmittedV1` to Redis Streams and returns `202 + job_id`.
+3. Orchestrator stream worker consumes the message and runs the decision pipeline:
+   - build search text (optionally including session context),
+   - request embedding,
+   - search/rerank cache hits,
+   - apply agent decision layer.
+4. Agent decision layer chooses one of:
    - `CACHE_HIT`: serve cache result directly.
    - `VALIDATE`: run false-hit validation before serving/rejecting cached result.
    - `LLM_FALLBACK`: skip cache and generate a fresh answer.
-6. On fallback/invalid cache:
+5. On fallback/invalid cache:
    - call RAG service for retrieval-backed answer, or
    - call LLM generation path if no RAG answer is available.
-7. Store resulting answer in cache (best-effort).
-8. Persist session context.
-9. **Analytics** — cache hits and query stats: the gateway publishes **`AnalyticsEventV1`** to Redis (`semcache:stream:analytics:events:v1`); the analytics service **projector** consumes that stream and updates the Redis read model. There is no synchronous gateway → analytics HTTP call on the hot path. (The analytics **`POST /internal/v1/events/query`** endpoint remains for tooling.)
+6. Store resulting answer in cache (best-effort).
+7. Persist session context.
+8. Publish analytics event to Redis stream (`semcache:stream:analytics:events:v1`); analytics service projector consumes it.
+9. Mark query job completed/failed in Redis and publish `QueryCompletedV1`.
+10. Gateway `GET /api/v1/query/{job_id}` reads the job result.
 
-10. Return wrapped `ResponseEnvelope[QueryResponse]` (sync) or job polling resolves to the same `QueryResponse` (async default).
-
-Core decision logic: **`query_router.py`** (still used for the synchronous fallback path and shared helpers); the default async path runs in **`query_stream_orchestrator.py`**.
+Sync fallback path (`QUERY_PIPELINE_ASYNC=false` + `GATEWAY_SYNC_QUERY_ENABLED=true`): gateway calls orchestrator `/internal/v1/query`, which executes the same `QueryRouterService` in-process on orchestrator.
 
 ## 4) Data and State Ownership
 
@@ -138,7 +149,7 @@ The intended rule in `backend/services/README.md` is:
 - allowed: `service -> shared`
 - disallowed: direct imports of another service's internal modules
 
-Current implementation: **satellite services do not import the gateway**. Orchestration and HTTP service clients live in the gateway; stream workers run inside cache / RAG / AI / analytics processes. Query handling defaults to the **async job API** (`POST /query` → **202** + Redis Streams); legacy synchronous `POST /query` is opt-in via settings.
+Current implementation: gateway and orchestrator both consume shared contracts/ports. Query handling defaults to the **async job API** (`POST /query` → **202** + Redis Streams); synchronous `POST /query` is an opt-in fallback routed gateway -> orchestrator HTTP.
 
 ## 7) Startup and Local Execution
 
@@ -149,6 +160,7 @@ From repository root, services are started individually:
 - `PYTHONPATH=backend uvicorn services.cache.app.main:app --port 8002 --reload`
 - `PYTHONPATH=backend uvicorn services.analytics.app.main:app --port 8003 --reload`
 - `PYTHONPATH=backend uvicorn services.ai.app.main:app --port 8004 --reload`
+- `PYTHONPATH=backend uvicorn services.orchestrator.app.main:app --port 8005 --reload`
 
 ## 8) Legacy vs Current Layout
 
@@ -160,7 +172,7 @@ Start in this order:
 
 1. `backend/services/gateway/app/main.py` (wiring)
 2. `backend/services/gateway/app/api/v1/query.py` (public query entrypoint)
-3. `backend/services/gateway/app/services/query_router.py` (core behavior)
+3. `backend/services/orchestrator/app/query_router.py` (core behavior)
 4. `backend/services/cache/app/api/internal_cache.py` (cache boundary)
 5. `backend/services/rag/app/api/rag_internal.py` (retrieval boundary)
 6. `backend/shared/contracts/internal.py` (service contracts)

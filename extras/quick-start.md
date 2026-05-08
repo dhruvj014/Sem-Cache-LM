@@ -2,7 +2,7 @@
 
 Assumes Docker Desktop, Python 3.11+, Node 18+, and [Ollama](https://ollama.com) are installed.
 
-**Important:** The gateway does **not** embed Qdrant or call Ollama directly. It talks to standalone services over HTTP (`AI_SERVICE_BASE_URL`, `CACHE_SERVICE_BASE_URL`, `RAG_SERVICE_BASE_URL`, `ANALYTICS_SERVICE_BASE_URL`). For queries to work you must run **AI + Cache + RAG + Analytics** alongside the gateway (see §5), or point those URLs at reachable deployments.
+**Important:** The gateway does **not** embed Qdrant or call Ollama directly. It talks to standalone services over HTTP (`AI_SERVICE_BASE_URL`, `CACHE_SERVICE_BASE_URL`, `RAG_SERVICE_BASE_URL`, `ANALYTICS_SERVICE_BASE_URL`, `ORCHESTRATOR_SERVICE_BASE_URL`). For queries to work you must run **AI + Cache + RAG + Analytics + Orchestrator** alongside the gateway (see run section), or point those URLs at reachable deployments.
 
 Use **`PYTHONPATH`** so Python can import `services.*` and `shared.*`:
 
@@ -53,9 +53,9 @@ Copy-Item .env.example .env
 Edit `.env` if needed:
 
 - **`CORS_ORIGINS`** — include `http://localhost:5173` for the UI.
-- **`AI_SERVICE_BASE_URL`**, **`CACHE_SERVICE_BASE_URL`**, **`RAG_SERVICE_BASE_URL`**, **`ANALYTICS_SERVICE_BASE_URL`** — defaults match local ports `8004`, `8002`, `8001`, `8003`.
+- **`AI_SERVICE_BASE_URL`**, **`CACHE_SERVICE_BASE_URL`**, **`RAG_SERVICE_BASE_URL`**, **`ANALYTICS_SERVICE_BASE_URL`**, **`ORCHESTRATOR_SERVICE_BASE_URL`** — defaults match local ports `8004`, `8002`, `8001`, `8003`, `8005`.
 - **`RAG_QDRANT_*`** — optional separate Qdrant collection for RAG chunks (see `.env.example`).
-- **`QUERY_PIPELINE_ASYNC`** — default **`true`**: **`202`** + `job_id`, then **`GET /api/v1/query/{job_id}`** (UI handles polling). Requires Redis, stream workers on Cache / AI / RAG / Analytics, and the gateway orchestrator loop. Set **`false`** and **`GATEWAY_SYNC_QUERY_ENABLED=true`** only for legacy synchronous `POST /query` (200 + body).
+- **`QUERY_PIPELINE_ASYNC`** — default **`true`**: **`202`** + `job_id`, then **`GET /api/v1/query/{job_id}`** (UI handles polling). Requires Redis, stream workers on Cache / AI / RAG / Analytics, and the standalone Orchestrator worker. Set **`false`** and **`GATEWAY_SYNC_QUERY_ENABLED=true`** for synchronous `POST /query` routed through orchestrator HTTP.
 - **`STREAM_RECLAIM_MIN_IDLE_MS`** — XAUTOCLAIM recovery for stale pending stream messages (`0` disables).
 - **`GET /api/v1/health/streams`** — XPENDING backlog per monitored stream (gateway ops).
 
@@ -63,7 +63,7 @@ Edit `.env` if needed:
 
 ## 4 — Run all backend services (recommended)
 
-Open **five terminals** from the **repo root** (PowerShell):
+Open **six terminals** from the **repo root** (PowerShell):
 
 ```powershell
 $env:PYTHONPATH="backend"
@@ -73,6 +73,7 @@ uvicorn services.rag.app.main:app --port 8001 --reload
 uvicorn services.cache.app.main:app --port 8002 --reload
 uvicorn services.analytics.app.main:app --port 8003 --reload
 uvicorn services.ai.app.main:app --port 8004 --reload
+uvicorn services.orchestrator.app.main:app --port 8005 --reload
 ```
 
 macOS / Linux:
@@ -80,7 +81,11 @@ macOS / Linux:
 ```bash
 export PYTHONPATH=backend
 uvicorn services.gateway.app.main:app --port 8000 --reload
-# ... same pattern for 8001–8004
+uvicorn services.rag.app.main:app --port 8001 --reload
+uvicorn services.cache.app.main:app --port 8002 --reload
+uvicorn services.analytics.app.main:app --port 8003 --reload
+uvicorn services.ai.app.main:app --port 8004 --reload
+uvicorn services.orchestrator.app.main:app --port 8005 --reload
 ```
 
 - Swagger (gateway) → http://localhost:8000/api/v1/docs  
@@ -125,7 +130,7 @@ cd frontend; npm run dev
 
 ## Smoke test (async query — default)
 
-Requires **gateway + ai + cache + rag + analytics** (§4).
+Requires **gateway + orchestrator + ai + cache + rag + analytics** (§4).
 
 ```powershell
 curl.exe -X POST http://localhost:8000/api/v1/query `
@@ -170,10 +175,11 @@ This wipes Qdrant volumes and Redis data for this compose stack.
 | `SIMILARITY_HIT_THRESHOLD` | `0.92` | Cosine score above which cache is served directly |
 | `SIMILARITY_GRAY_ZONE_LOW` | `0.7` | Below this score, policy tends toward LLM / validate paths |
 | `QUERY_PIPELINE_ASYNC` | `true` | `true` → async job API + Redis Streams orchestration |
-| `GATEWAY_SYNC_QUERY_ENABLED` | `false` | Allow synchronous `POST /query` when async flag is off |
+| `GATEWAY_SYNC_QUERY_ENABLED` | `false` | Allow synchronous `POST /query` via gateway -> orchestrator HTTP |
 | `STREAM_WORKERS_ENABLED` | `true` | Cache / RAG / AI services consume command streams |
 | `ANALYTICS_VIA_STREAM` | `true` | Orchestrator publishes analytics events (async path) |
 | `AI_SERVICE_BASE_URL` | `http://localhost:8004` | Gateway → AI HTTP |
+| `ORCHESTRATOR_SERVICE_BASE_URL` | `http://localhost:8005` | Gateway → Orchestrator HTTP |
 | `CACHE_SEARCH_TOP_K` | `12` | Neighbors fetched before rerank |
 | `CACHE_RERANK_*` | see `.env.example` | Lexical / quality / popularity reranking |
 | `VALIDATOR_CACHE_TTL_SECONDS` | `3600` | Redis TTL for memoised validator verdicts (`0` = off) |
