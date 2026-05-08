@@ -1,6 +1,188 @@
-version: "3.9"
-
 services:
+  gateway:
+    build:
+      context: ./backend
+      dockerfile: services/gateway/Dockerfile
+    container_name: semcachelm-gateway
+    restart: unless-stopped
+    command: ["uvicorn", "services.gateway.app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    environment:
+      APP_ENV: development
+      APP_VERSION: 1.0.0
+      LOG_LEVEL: INFO
+      CORS_ORIGINS: http://localhost:5173,http://localhost:3000
+      QDRANT_HOST: qdrant
+      QDRANT_PORT: 6333
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      OLLAMA_BASE_URL: http://host.docker.internal:11434
+      AI_SERVICE_BASE_URL: http://ai:8004
+      CACHE_SERVICE_BASE_URL: http://cache:8002
+      RAG_SERVICE_BASE_URL: http://rag:8001
+      ANALYTICS_SERVICE_BASE_URL: http://analytics:8003
+      ORCHESTRATOR_SERVICE_BASE_URL: http://orchestrator:8005
+      QUERY_PIPELINE_ASYNC: "true"
+      STREAM_WORKERS_ENABLED: "true"
+      ANALYTICS_STREAM_CONSUMER_ENABLED: "true"
+      ANALYTICS_VIA_STREAM: "true"
+      GATEWAY_SYNC_QUERY_ENABLED: "false"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "8000:8000"
+    depends_on:
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+      ai:
+        condition: service_started
+      cache:
+        condition: service_started
+      rag:
+        condition: service_started
+      analytics:
+        condition: service_started
+      orchestrator:
+        condition: service_started
+
+  rag:
+    build:
+      context: ./backend
+      dockerfile: services/rag/Dockerfile
+    container_name: semcachelm-rag
+    restart: unless-stopped
+    command: ["uvicorn", "services.rag.app.main:app", "--host", "0.0.0.0", "--port", "8001"]
+    environment:
+      APP_ENV: development
+      APP_VERSION: 1.0.0
+      LOG_LEVEL: INFO
+      CORS_ORIGINS: http://localhost:5173,http://localhost:3000
+      QDRANT_HOST: qdrant
+      QDRANT_PORT: 6333
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      OLLAMA_BASE_URL: http://host.docker.internal:11434
+      RAG_REPO_CACHE_DIR: /data/rag_repo_cache
+      RAG_INDEX_DIR: /data/rag_index
+      RAG_CATALOG_DIR: /data/rag_catalog
+      RAG_QDRANT_HOST: qdrant
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - rag_data:/data
+    ports:
+      - "8001:8001"
+    depends_on:
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+
+  cache:
+    build:
+      context: ./backend
+      dockerfile: services/cache/Dockerfile
+    container_name: semcachelm-cache
+    restart: unless-stopped
+    command: ["uvicorn", "services.cache.app.main:app", "--host", "0.0.0.0", "--port", "8002"]
+    environment:
+      APP_ENV: development
+      APP_VERSION: 1.0.0
+      LOG_LEVEL: INFO
+      CORS_ORIGINS: http://localhost:5173,http://localhost:3000
+      QDRANT_HOST: qdrant
+      QDRANT_PORT: 6333
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      STREAM_WORKERS_ENABLED: "true"
+    ports:
+      - "8002:8002"
+    depends_on:
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+
+  analytics:
+    build:
+      context: ./backend
+      dockerfile: services/analytics/Dockerfile
+    container_name: semcachelm-analytics
+    restart: unless-stopped
+    command: ["uvicorn", "services.analytics.app.main:app", "--host", "0.0.0.0", "--port", "8003"]
+    environment:
+      APP_ENV: development
+      APP_VERSION: 1.0.0
+      LOG_LEVEL: INFO
+      CORS_ORIGINS: http://localhost:5173,http://localhost:3000
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      ANALYTICS_STREAM_CONSUMER_ENABLED: "true"
+    ports:
+      - "8003:8003"
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  ai:
+    build:
+      context: ./backend
+      dockerfile: services/ai/Dockerfile
+    container_name: semcachelm-ai
+    restart: unless-stopped
+    command: ["uvicorn", "services.ai.app.main:app", "--host", "0.0.0.0", "--port", "8004"]
+    environment:
+      APP_ENV: development
+      APP_VERSION: 1.0.0
+      LOG_LEVEL: INFO
+      CORS_ORIGINS: http://localhost:5173,http://localhost:3000
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      OLLAMA_BASE_URL: http://host.docker.internal:11434
+      STREAM_WORKERS_ENABLED: "true"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "8004:8004"
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  orchestrator:
+    build:
+      context: ./backend
+      dockerfile: services/orchestrator/Dockerfile
+    container_name: semcachelm-orchestrator
+    restart: unless-stopped
+    command: ["uvicorn", "services.orchestrator.app.main:app", "--host", "0.0.0.0", "--port", "8005"]
+    environment:
+      APP_ENV: development
+      APP_VERSION: 1.0.0
+      LOG_LEVEL: INFO
+      CORS_ORIGINS: http://localhost:5173,http://localhost:3000
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      OLLAMA_BASE_URL: http://host.docker.internal:11434
+      AI_SERVICE_BASE_URL: http://ai:8004
+      CACHE_SERVICE_BASE_URL: http://cache:8002
+      RAG_SERVICE_BASE_URL: http://rag:8001
+      QUERY_PIPELINE_ASYNC: "true"
+      ANALYTICS_VIA_STREAM: "true"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "8005:8005"
+    depends_on:
+      redis:
+        condition: service_healthy
+      ai:
+        condition: service_started
+      cache:
+        condition: service_started
+      rag:
+        condition: service_started
+
   qdrant:
     image: qdrant/qdrant:v1.11.0
     container_name: semcachelm-qdrant
@@ -31,6 +213,21 @@ services:
       timeout: 5s
       retries: 5
 
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: http://localhost:8000
+    container_name: semcachelm-frontend
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+    depends_on:
+      gateway:
+        condition: service_started
+
 volumes:
   qdrant_data:
   redis_data:
+  rag_data:

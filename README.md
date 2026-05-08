@@ -43,6 +43,39 @@ All paths below are relative to the **repository root** (folder containing `dock
 
 ---
 
+## Run Everything in Docker (recommended)
+
+1. Start Ollama on your host (default URL: `http://localhost:11434`) and pull models once:
+
+```bash
+ollama pull llama3.1:8b
+ollama pull nomic-embed-text
+```
+
+2. From the repo root, start the full stack (backend services + frontend + Redis + Qdrant):
+
+```bash
+docker compose up --build -d
+```
+
+3. Verify:
+
+```bash
+curl http://localhost:8000/api/v1/health
+```
+
+4. Open the UI:
+
+- http://localhost:5173
+
+To wipe state and rerun from scratch:
+
+```bash
+docker compose down -v
+```
+
+---
+
 ## Testing locally (step-by-step)
 
 ### 1. Start Qdrant and Redis
@@ -145,7 +178,7 @@ pytest tests/ -v
 
 These tests use fakes and **do not** require Docker or Ollama. Expect all tests to pass on a healthy tree.
 
-### 6. Run the API
+### 6. Run the API (manual option)
 
 Still in **`backend/`** with venv active:
 ### 6.1 Run all backend services (microservice mode)
@@ -164,7 +197,7 @@ uvicorn services.orchestrator.app.main:app --port 8005 --reload
 Smoke checks:
 
 - **Swagger:** [http://localhost:8000/api/v1/docs](http://localhost:8000/api/v1/docs)
-- **Health:** `curl http://localhost:8000/api/v1/health` — JSON reports gateway dependencies (`redis`, `ai_service`); if AI service is down, status may be **degraded**.
+- **Health:** `curl http://localhost:8000/api/v1/health` — JSON reports gateway dependencies (`redis`, `ai_service`, `cache_service`, `rag_service`, `analytics_service`, `orchestrator_service`); if any are down, status may be **degraded**.
 
 ### 7. Manual API checks (optional)
 
@@ -216,26 +249,20 @@ Open [http://localhost:5173](http://localhost:5173) while the API from Section 6
 ## Quick reference (experienced setup)
 
 ```bash
-# Root: infra
-docker compose up -d
+# Docker (full stack)
 ollama pull llama3.1:8b && ollama pull nomic-embed-text
+docker compose up --build -d
+# UI: http://localhost:5173
 
-# Backend
+# Manual (microservice mode)
 cd backend && python -m venv venv && . venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements-dev.txt && cp .env.example .env
-pytest tests/ -q 
-uvicorn services.gateway.app.main:app --reload --port 8000
-# RAG service (other terminal)
-uvicorn services.rag.app.main:app --reload --port 8001
-# Cache service (other terminal)
-uvicorn services.cache.app.main:app --reload --port 8002
-# Analytics service (other terminal)
-uvicorn services.analytics.app.main:app --reload --port 8003
-# AI service (other terminal)
-uvicorn services.analytics.app.main:app --reload --port 8004
-# Orchestrator service (other terminal)
-uvicorn services.orchestrator.app.main:app --reload --port 8004
-
+PYTHONPATH=backend uvicorn services.gateway.app.main:app --reload --port 8000
+PYTHONPATH=backend uvicorn services.rag.app.main:app --reload --port 8001
+PYTHONPATH=backend uvicorn services.cache.app.main:app --reload --port 8002
+PYTHONPATH=backend uvicorn services.analytics.app.main:app --reload --port 8003
+PYTHONPATH=backend uvicorn services.ai.app.main:app --reload --port 8004
+PYTHONPATH=backend uvicorn services.orchestrator.app.main:app --reload --port 8005
 # Frontend (other terminal)
 cd frontend && cp .env.example .env && npm install && npm run dev
 ```
@@ -252,7 +279,7 @@ cd frontend && cp .env.example .env && npm install && npm run dev
 | POST   | `/api/v1/cache/evict`         | Evict low-quality entries              |
 | GET    | `/api/v1/analytics/summary`   | Aggregate stats                        |
 | GET    | `/api/v1/analytics/history`   | Recent query log                       |
-| GET    | `/api/v1/health`              | Health check (`redis` + `ai_service`)  |
+| GET    | `/api/v1/health`              | Health check (`redis`, `ai_service`, `cache_service`, `rag_service`, `analytics_service`, `orchestrator_service`)  |
 
 All responses use this envelope:
 
@@ -286,7 +313,7 @@ Quality EMA: `new = (1 − α)·old + α·feedback_value` where upvote = 1.0, do
 The system is AWS-ready out of the box:
 
 - All configuration is read from environment variables (no hardcoded values).
-- `backend/Dockerfile` exposes port 8000 and includes a health check.
+- Service images use per-service Dockerfiles under `backend/services/*/Dockerfile` (for example `backend/services/gateway/Dockerfile` exposes port 8000 with a gateway health check).
 - `frontend/Dockerfile` builds with `VITE_API_URL` as a build arg, served by Nginx.
 - `docker-compose.aws.yml` is a single-stack composition for ECS-compatible deployments.
 - For managed services, swap:

@@ -17,6 +17,7 @@ backend/.rag_catalog/
 frontend/node_modules/
 frontend/dist/
 frontend/.env
+.env
 
 # OS / IDE
 .DS_Store
@@ -31,4 +32,4 @@ backend/.rag_index/
 backend/.rag_repo_cache/
 backend/.rag_catalog/
 
-Makerfile
+Makefile

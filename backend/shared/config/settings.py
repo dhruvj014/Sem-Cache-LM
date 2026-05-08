@@ -63,7 +63,7 @@ class Settings(BaseSettings):
     ollama_base_url: str = "http://localhost:11434"
     ollama_llm_model: str = "llama3.1:8b"
     ollama_embedding_model: str = "nomic-embed-text"
-    ollama_timeout_seconds: float = 120.0
+    ollama_timeout_seconds: float = 240.0
 
     similarity_hit_threshold: float = 0.92
     similarity_gray_zone_low: float = 0.7
@@ -72,7 +72,7 @@ class Settings(BaseSettings):
     quality_eviction_threshold: float = 0.3
 
     cache_search_top_k: int = Field(
-        default=12,
+        default=2,
         description="Neighbors to fetch from Qdrant before lexical rerank.",
     )
     cache_index_response_max_chars: int = Field(
@@ -155,7 +155,7 @@ class Settings(BaseSettings):
         description="Persisted LlamaIndex storage directory.",
     )
     rag_top_k: int = Field(
-        default=4,
+        default=2,
         ge=1,
         le=20,
         description="Top-k chunks retrieved by LlamaIndex query engine.",
@@ -213,7 +213,7 @@ class Settings(BaseSettings):
         description="Base URL for the standalone RAG/Catalog service.",
     )
     rag_service_request_timeout_seconds: float = Field(
-        default=60.0,
+        default=240.0,
         ge=0.5,
         le=300.0,
         description="Timeout for internal calls to the RAG service.",
@@ -223,7 +223,7 @@ class Settings(BaseSettings):
         description="Base URL for the standalone Cache service.",
     )
     cache_service_request_timeout_seconds: float = Field(
-        default=20.0,
+        default=60.0,
         ge=0.5,
         le=300.0,
         description="Timeout for internal calls to the Cache service.",
@@ -233,7 +233,7 @@ class Settings(BaseSettings):
         description="Base URL for the standalone Analytics service.",
     )
     analytics_service_request_timeout_seconds: float = Field(
-        default=20.0,
+        default=60.0,
         ge=0.5,
         le=300.0,
         description="Timeout for internal calls to the Analytics service.",
@@ -266,7 +266,7 @@ class Settings(BaseSettings):
         description="Standalone AI inference service for gateway HTTP calls (no Ollama in gateway).",
     )
     ai_service_request_timeout_seconds: float = Field(
-        default=120.0,
+        default=240.0,
         ge=0.5,
         le=600.0,
         description="Timeout for gateway → AI service HTTP calls.",
@@ -276,7 +276,7 @@ class Settings(BaseSettings):
         description="Base URL for the standalone Orchestrator service.",
     )
     orchestrator_service_request_timeout_seconds: float = Field(
-        default=120.0,
+        default=360.0,
         ge=0.5,
         le=600.0,
         description="Timeout for gateway → Orchestrator service HTTP calls.",
@@ -289,7 +289,7 @@ class Settings(BaseSettings):
     )
     query_job_ttl_seconds: int = Field(default=3600, ge=60)
     orchestrator_step_timeout_seconds: float = Field(
-        default=120.0,
+        default=360.0,
         ge=5.0,
         description="Watchdog for orchestrator waiting on downstream HTTP/stream steps.",
     )

@@ -13,6 +13,41 @@ Use **`PYTHONPATH`** so Python can import `services.*` and `shared.*`:
 
 ---
 
+## Run All Services in Docker (recommended)
+
+Brings up Redis + Qdrant + gateway + orchestrator + AI + cache + RAG + analytics + the frontend.
+
+1. Start Ollama on your host (port `11434`) and pull models once:
+
+```bash
+ollama pull llama3.1:8b
+ollama pull nomic-embed-text
+```
+
+2. From the repo root:
+
+```bash
+docker compose up --build -d
+```
+
+3. Verify:
+
+```bash
+curl http://localhost:8000/api/v1/health
+```
+
+4. Open the UI: http://localhost:5173
+
+Reset everything:
+
+```bash
+docker compose down -v
+```
+
+Manual option: follow the remaining sections below.
+
+---
+
 ## 1 — Infrastructure (Qdrant + Redis)
 
 ```powershell
