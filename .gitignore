@@ -8,6 +8,9 @@ backend/.env
 backend/rag_index/
 backend/rag_repo_cache/
 backend/rag_catalog/
+backend/.rag_index/
+backend/.rag_repo_cache/
+backend/.rag_catalog/
 *.pyc
 
 # Node

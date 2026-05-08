@@ -176,7 +176,19 @@ Keep this process running in its **own terminal**. Working directory: **`backend
 **Step 5.1**
 
 ```bash
-uvicorn app.main:app --reload --port 8000
+uvicorn services.gateway.app.main:app --reload --port 8000
+```
+
+### Optional: run full microservice stack
+
+From repo root, run each in a separate terminal:
+
+```bash
+PYTHONPATH=backend uvicorn services.gateway.app.main:app --port 8000 --reload
+PYTHONPATH=backend uvicorn services.rag.app.main:app --port 8001 --reload
+PYTHONPATH=backend uvicorn services.cache.app.main:app --port 8002 --reload
+PYTHONPATH=backend uvicorn services.analytics.app.main:app --port 8003 --reload
+PYTHONPATH=backend uvicorn services.ai.app.main:app --port 8004 --reload
 ```
 
 **Step 5.2 — Smoke check**

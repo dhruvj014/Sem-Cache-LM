@@ -5,8 +5,8 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.api.v1.catalog import router
-from app.dependencies import (
+from services.gateway.app.api.v1.catalog import router
+from services.rag.app.dependencies import (
     get_api_catalog_service,
     get_catalog_cache_service,
     get_repo_catalog_service,

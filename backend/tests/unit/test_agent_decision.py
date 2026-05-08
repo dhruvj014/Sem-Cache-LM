@@ -1,7 +1,7 @@
-from app.models.enums import AgentAction
-from app.models.schemas import CacheHit
-from app.services.agent_decision import AgentDecisionLayer
-from app.services.decision_thresholds import DecisionThresholds
+from shared.models.enums import AgentAction
+from shared.models.schemas import CacheHit
+from services.gateway.app.services.agent_decision import AgentDecisionLayer
+from services.gateway.app.services.decision_thresholds import DecisionThresholds
 
 
 def _hit(score: float, quality: float = 1.0) -> CacheHit:

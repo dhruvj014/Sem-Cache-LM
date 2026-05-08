@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from app.services.repo_catalog_service import RepoCatalogService
+from services.rag.app.services.repo_catalog_service import RepoCatalogService
 
 
 def test_repo_catalog_generation_writes_files(settings, tmp_path: Path):

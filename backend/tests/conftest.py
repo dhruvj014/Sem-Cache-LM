@@ -11,7 +11,7 @@ sys.path.insert(0, str(BACKEND_ROOT))
 os.environ.setdefault("APP_ENV", "test")
 os.environ.setdefault("LOG_LEVEL", "WARNING")
 
-from app.config import Settings  # noqa: E402
+from services.gateway.app.config import Settings  # noqa: E402
 
 
 @pytest.fixture

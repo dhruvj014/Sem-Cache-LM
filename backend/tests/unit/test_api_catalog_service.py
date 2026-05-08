@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from app.main import create_app
-from app.services.api_catalog_service import ApiCatalogService
+from services.gateway.app.main import create_app
+from services.rag.app.services.api_catalog_service import ApiCatalogService
 
 
 def test_api_catalog_generation_from_openapi(settings, tmp_path: Path):

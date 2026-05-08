@@ -2,25 +2,24 @@
 Verifies the full decision pipeline: cache hit, gray-zone validate (true positive),
 gray-zone validate (false hit -> RAG fallback), and cold-cache RAG fallback."""
 
-from typing import List, Optional
+from typing import List
 
 import pytest
 
-from app.models.enums import AgentAction, ResponseSource
-from app.models.schemas import (
-    CacheEntry,
+from shared.models.enums import AgentAction, ResponseSource
+from shared.models.schemas import (
     CacheHit,
     EvictionResult,
+    QueryResponse,
     ValidationResult,
 )
-from app.services.agent_decision import AgentDecisionLayer
-from app.services.decision_thresholds import DecisionThresholds
-from app.services.base.cache_base import CacheReader, CacheWriter
-from app.services.base.embedding_base import EmbeddingService
-from app.services.base.llm_base import LLMClient
-from app.services.query_router import QueryRouterService
-from app.services.rag_service import RagCitation, RagResult
-from app.services.session_context import NullSessionContextService
+from services.gateway.app.services.agent_decision import AgentDecisionLayer
+from services.gateway.app.services.decision_thresholds import DecisionThresholds
+from shared.domain.cache_ports import CacheReader, CacheWriter
+from shared.domain.model_providers import EmbeddingService, LLMClient
+from services.gateway.app.services.query_router import QueryRouterService
+from services.rag.app.services.rag_service import RagCitation, RagResult
+from services.gateway.app.services.session_context import NullSessionContextService
 
 
 class FakeEmbedder(EmbeddingService):
@@ -123,12 +122,12 @@ class FakeRag:
         )
 
 
-class FakeAnalytics:
+class RecordingAnalyticsPublisher:
     def __init__(self):
-        self.records = []
+        self.events: list[tuple[str, QueryResponse]] = []
 
-    async def record_query(self, **kw):
-        self.records.append(kw)
+    async def publish(self, *, query: str, response: QueryResponse):
+        self.events.append((query, response))
 
 
 def _hit(score, cache_id="cid-1", quality=1.0):
@@ -149,7 +148,7 @@ def _build(settings, hits, validator_valid=True, llm=None, rag=None):
     validator = FakeValidator(is_valid=validator_valid)
     llm = llm or FakeLLM()
     rag = rag or FakeRag()
-    analytics = FakeAnalytics()
+    publisher = RecordingAnalyticsPublisher()
     router = QueryRouterService(
         settings=settings,
         embedder=embedder,
@@ -159,15 +158,15 @@ def _build(settings, hits, validator_valid=True, llm=None, rag=None):
         false_hit_detector=validator,
         llm=llm,
         rag=rag,
-        analytics=analytics,
+        analytics_publisher=publisher,
         session_context=NullSessionContextService(),
     )
-    return router, embedder, cache, validator, llm, rag, analytics
+    return router, embedder, cache, validator, llm, rag, publisher
 
 
 @pytest.mark.asyncio
 async def test_cold_cache_falls_back_to_llm(settings):
-    router, embedder, cache, _, llm, rag, analytics = _build(settings, hits=[])
+    router, embedder, cache, _, llm, rag, publisher = _build(settings, hits=[])
     resp = await router.handle_query("first query", "s1")
     assert resp.source == ResponseSource.LLM
     assert resp.agent_action == AgentAction.LLM_FALLBACK
@@ -178,7 +177,7 @@ async def test_cold_cache_falls_back_to_llm(settings):
     assert cache.stored[0]["response"] == "RAG-response"
     assert len(resp.citations) == 1
     assert resp.citations[0].file_path == "backend/app/services/query_router.py"
-    assert len(analytics.records) == 1
+    assert len(publisher.events) == 1
 
 
 @pytest.mark.asyncio

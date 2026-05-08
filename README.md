@@ -16,7 +16,8 @@ required advanced features:
 ## Architecture
 
 ```
-React (Vite + Tailwind) ── HTTP ──▶ FastAPI ──▶ Qdrant + Redis + Ollama
+React (Vite + Tailwind) ── HTTP ──▶ Gateway (FastAPI) ──▶ Cache/RAG/AI/Analytics services
+                                                   └────▶ Redis Streams orchestration
 ```
 
 - **Backend:** FastAPI · Pydantic v2 · structlog · httpx (async) · qdrant-client · redis-py
@@ -149,19 +150,31 @@ These tests use fakes and **do not** require Docker or Ollama. Expect all tests 
 Still in **`backend/`** with venv active:
 
 ```bash
-uvicorn app.main:app --reload --port 8000
+uvicorn services.gateway.app.main:app --reload --port 8000
+```
+
+### 6.1 Run all backend services (microservice mode)
+
+From repo root:
+
+```bash
+PYTHONPATH=backend uvicorn services.gateway.app.main:app --port 8000 --reload
+PYTHONPATH=backend uvicorn services.rag.app.main:app --port 8001 --reload
+PYTHONPATH=backend uvicorn services.cache.app.main:app --port 8002 --reload
+PYTHONPATH=backend uvicorn services.analytics.app.main:app --port 8003 --reload
+PYTHONPATH=backend uvicorn services.ai.app.main:app --port 8004 --reload
 ```
 
 Smoke checks:
 
 - **Swagger:** [http://localhost:8000/api/v1/docs](http://localhost:8000/api/v1/docs)
-- **Health:** `curl http://localhost:8000/api/v1/health` — JSON should report Qdrant, Redis, and Ollama; if Ollama is down, health may be **degraded** — fix Section 2 before exercises that need embeddings or the LLM.
+- **Health:** `curl http://localhost:8000/api/v1/health` — JSON reports gateway dependencies (`redis`, `ai_service`); if AI service is down, status may be **degraded**.
 
 ### 7. Manual API checks (optional)
 
 Responses use a wrapper: `success`, `data`, `error`, `timestamp`. Use `session_id` (any non-empty string) on `POST /api/v1/query` for session-aware search.
 
-**PowerShell example** (first query, cold or warm cache):
+**PowerShell example** (default async query submit):
 
 ```powershell
 curl.exe -X POST http://localhost:8000/api/v1/query `
@@ -169,7 +182,14 @@ curl.exe -X POST http://localhost:8000/api/v1/query `
   -d '{"query": "What is a distributed system?", "session_id": "test-001"}'
 ```
 
-Repeat the same body to exercise a **cache hit**; try paraphrases to see **validate** / gray-zone behavior.
+Then poll status/result:
+
+```powershell
+curl.exe http://localhost:8000/api/v1/query/<job_id>
+```
+
+For legacy synchronous behavior, set `QUERY_PIPELINE_ASYNC=false` and
+`GATEWAY_SYNC_QUERY_ENABLED=true`.
 
 For full curl scenarios (feedback, eviction, analytics), **PowerShell vs cmd quoting**, and numeric expectations on `data.*`, see **[TESTING.md](./TESTING.md)** (sections on manual API and troubleshooting).
 
@@ -206,7 +226,7 @@ ollama pull llama3.1:8b && ollama pull nomic-embed-text
 # Backend
 cd backend && python -m venv venv && . venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements-dev.txt && cp .env.example .env
-pytest tests/ -q && uvicorn app.main:app --reload --port 8000
+pytest tests/ -q && uvicorn services.gateway.app.main:app --reload --port 8000
 
 # Frontend (other terminal)
 cd frontend && cp .env.example .env && npm install && npm run dev
@@ -216,14 +236,15 @@ cd frontend && cp .env.example .env && npm install && npm run dev
 
 | Method | Path                          | Purpose                                |
 | ------ | ----------------------------- | -------------------------------------- |
-| POST   | `/api/v1/query`               | Submit a user query                    |
+| POST   | `/api/v1/query`               | Submit a query (default async: `202` + `job_id`) |
+| GET    | `/api/v1/query/{job_id}`      | Poll async query status/result         |
 | POST   | `/api/v1/feedback/{cache_id}` | Submit `up` / `down` feedback          |
 | GET    | `/api/v1/cache/entries`       | List cache entries (paginated)         |
 | DELETE | `/api/v1/cache/{cache_id}`    | Delete a cache entry                   |
 | POST   | `/api/v1/cache/evict`         | Evict low-quality entries              |
 | GET    | `/api/v1/analytics/summary`   | Aggregate stats                        |
 | GET    | `/api/v1/analytics/history`   | Recent query log                       |
-| GET    | `/api/v1/health`              | Health check (Qdrant + Redis + Ollama) |
+| GET    | `/api/v1/health`              | Health check (`redis` + `ai_service`)  |
 
 All responses use this envelope:
 
@@ -280,6 +301,12 @@ QUALITY_EMA_ALPHA, QUALITY_EVICTION_THRESHOLD,
 CACHE_SEARCH_TOP_K
 ```
 
+Additional commonly tuned vars live in `backend/.env.example`, including:
+
+- service URLs/timeouts (`AI_SERVICE_BASE_URL`, `CACHE_SERVICE_BASE_URL`, `RAG_SERVICE_BASE_URL`, `ANALYTICS_SERVICE_BASE_URL`)
+- async pipeline flags (`QUERY_PIPELINE_ASYNC`, `GATEWAY_SYNC_QUERY_ENABLED`, `STREAM_WORKERS_ENABLED`, `STREAM_RECLAIM_MIN_IDLE_MS`)
+- RAG split storage (`RAG_QDRANT_*`, `RAG_REDIS_MANIFEST_PREFIX`)
+
 ### Frontend env vars
 
 ```
@@ -291,14 +318,22 @@ VITE_API_URL
 ```
 semcachelm/
 ├── backend/                FastAPI + services
-│   ├── app/
-│   │   ├── api/v1/         Routes
-│   │   ├── services/       Business logic (SOLID)
-│   │   ├── infrastructure/ Qdrant + Redis clients
-│   │   ├── models/         Pydantic schemas + enums
-│   │   └── utils/          Logger + timer
+│   ├── services/
+│   │   ├── gateway/app/    Public API + orchestration
+│   │   ├── cache/app/      Cache boundary service
+│   │   ├── rag/app/        Retrieval + catalog service
+│   │   ├── analytics/app/  Analytics boundary service
+│   │   └── ai/app/         AI inference service
+│   ├── shared/             Contracts, models, infra, observability
 │   └── tests/              Unit + integration
 └── frontend/               React + Vite UI
 ```
 
 For more scenarios (eviction, analytics, extended troubleshooting), see **[TESTING.md](./TESTING.md)**.
+
+## Migration Notes (Breaking Changes)
+
+- `backend/app` was removed as part of the services/shared cutover.
+- Old startup commands like `uvicorn app.main:app` are no longer valid.
+- Use `services.*` module paths for runtime entrypoints and imports.
+- Tests and scripts should import from `services.gateway.app.*`, `services.<service>.app.*`, and `shared.*`.

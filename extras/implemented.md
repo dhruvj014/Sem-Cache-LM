@@ -42,7 +42,7 @@ Summary of shipped UI and API features for demos and grading.
 ### 7. Version / environment strip
 
 - **What:** Footer with API base URL, backend version, health status, optional `VITE_GIT_SHA`, and model/collection names from **`GET /api/v1/health`**.
-- **Where:** `frontend/src/components/EnvironmentStrip.jsx`, `frontend/src/App.jsx`. Backend: `HealthStatus` extended in `backend/app/models/schemas.py` and `backend/app/api/v1/health.py`.
+- **Where:** `frontend/src/components/EnvironmentStrip.jsx`, `frontend/src/App.jsx`. Backend: `HealthStatus` extended in `backend/shared/models/schemas.py` and `backend/services/gateway/app/api/v1/health.py`.
 
 ### 8. Stress-the-cache micro-benchmark
 

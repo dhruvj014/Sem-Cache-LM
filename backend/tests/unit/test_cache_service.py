@@ -5,8 +5,8 @@ from typing import Any
 
 import pytest
 
-from app.models.enums import FeedbackRating
-from app.services.feedback_service import FeedbackService
+from shared.models.enums import FeedbackRating
+from services.gateway.app.services.feedback_service import FeedbackService
 
 
 class FakeRedis:

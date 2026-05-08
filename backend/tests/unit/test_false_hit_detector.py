@@ -1,7 +1,7 @@
 import pytest
 
-from app.services.base.llm_base import LLMClient
-from app.services.false_hit_detector import FalseHitDetector
+from shared.domain.model_providers import LLMClient
+from services.gateway.app.services.false_hit_detector import FalseHitDetector
 
 
 class _FakeLLM(LLMClient):
