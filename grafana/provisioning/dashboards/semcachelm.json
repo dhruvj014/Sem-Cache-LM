@@ -1,0 +1,151 @@
+{
+  "uid": "semcachelm-main",
+  "title": "SemCacheLM Observability",
+  "tags": ["semcachelm"],
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "timezone": "browser",
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": {},
+  "templating": { "list": [] },
+  "annotations": { "list": [] },
+  "editable": false,
+  "graphTooltip": 1,
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Cache Decision Breakdown",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [
+        { "refId": "A", "expr": "rate(semcachelm_cache_hits_total[5m])", "legendFormat": "Cache Hit" },
+        { "refId": "B", "expr": "rate(semcachelm_llm_fallback_total[5m])", "legendFormat": "LLM Fallback" },
+        { "refId": "C", "expr": "rate(semcachelm_validate_hits_total[5m])", "legendFormat": "Validate Hit" },
+        { "refId": "D", "expr": "rate(semcachelm_validate_misses_total[5m])", "legendFormat": "Validate Miss" }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "gauge",
+      "title": "Cache Hit Rate %",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "max": 100,
+          "unit": "percent",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 80 }] }
+        },
+        "overrides": []
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "showThresholdLabels": false, "showThresholdMarkers": true },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "100 * rate(semcachelm_cache_hits_total[5m]) / (rate(semcachelm_cache_hits_total[5m]) + rate(semcachelm_llm_fallback_total[5m]) + rate(semcachelm_validate_hits_total[5m]) + rate(semcachelm_validate_misses_total[5m]) + 1e-9)"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "LLM Latency p50 / p99",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "drawStyle": "line" } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.50, sum(rate(semcachelm_llm_latency_seconds_bucket{call_type=\"infer\"}[5m])) by (le))",
+          "legendFormat": "infer p50"
+        },
+        {
+          "refId": "B",
+          "expr": "histogram_quantile(0.99, sum(rate(semcachelm_llm_latency_seconds_bucket{call_type=\"infer\"}[5m])) by (le))",
+          "legendFormat": "infer p99"
+        },
+        {
+          "refId": "C",
+          "expr": "histogram_quantile(0.99, sum(rate(semcachelm_llm_latency_seconds_bucket{call_type=\"judge\"}[5m])) by (le))",
+          "legendFormat": "judge p99"
+        },
+        {
+          "refId": "D",
+          "expr": "histogram_quantile(0.99, sum(rate(semcachelm_llm_latency_seconds_bucket{call_type=\"embed\"}[5m])) by (le))",
+          "legendFormat": "embed p99"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "heatmap",
+      "title": "Similarity Score Distribution",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "options": { "calculate": true, "yAxis": { "unit": "short" } },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(semcachelm_similarity_score_bucket[5m])) by (le)",
+          "format": "heatmap",
+          "legendFormat": "{{le}}"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Cache Size + Evictions",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "custom": { "drawStyle": "line" } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [
+        { "refId": "A", "expr": "semcachelm_cache_size_total", "legendFormat": "Cache Size" },
+        { "refId": "B", "expr": "rate(semcachelm_evictions_total[5m])", "legendFormat": "Evictions/s" }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Redis Stream Lag",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "none" },
+      "targets": [{ "refId": "A", "expr": "semcachelm_redis_stream_pending" }]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "HTTP Request Rate per Service",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "custom": { "drawStyle": "line" } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [{ "refId": "A", "expr": "sum by (job) (rate(http_requests_total[5m]))", "legendFormat": "{{job}}" }]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "HTTP p99 Latency per Service",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "drawStyle": "line" } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.99, sum by (job, le) (rate(http_request_duration_seconds_bucket[5m])))",
+          "legendFormat": "{{job}}"
+        }
+      ]
+    }
+  ]
+}

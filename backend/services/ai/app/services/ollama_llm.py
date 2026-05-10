@@ -3,6 +3,7 @@ import httpx
 from shared.config.settings import Settings
 from shared.domain.model_providers import LLMClient
 from shared.observability.logger import get_logger
+from shared.observability.metrics import LLM_LATENCY
 
 logger = get_logger(__name__)
 
@@ -22,11 +23,12 @@ class OllamaLLMClient(LLMClient):
         }
         if system:
             payload["system"] = system
-        resp = await self._http.post(
-            url,
-            json=payload,
-            timeout=self._settings.ollama_timeout_seconds,
-        )
+        with LLM_LATENCY.labels(call_type="infer").time():
+            resp = await self._http.post(
+                url,
+                json=payload,
+                timeout=self._settings.ollama_timeout_seconds,
+            )
         resp.raise_for_status()
         data = resp.json()
         return (data.get("response") or "").strip()

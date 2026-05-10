@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 import httpx
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from prometheus_fastapi_instrumentator import Instrumentator
 
 from services.gateway.app.api.v1 import (
     analytics,
@@ -91,6 +92,7 @@ def create_app() -> FastAPI:
     app.include_router(analytics.router, prefix=prefix, tags=["analytics"])
     app.include_router(decision_thresholds_api.router, prefix=prefix, tags=["config"])
 
+    Instrumentator().instrument(app).expose(app)
     return app
 
 

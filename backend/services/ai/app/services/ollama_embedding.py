@@ -5,6 +5,7 @@ import httpx
 from shared.config.settings import Settings
 from shared.domain.model_providers import EmbeddingService
 from shared.observability.logger import get_logger
+from shared.observability.metrics import LLM_LATENCY
 
 logger = get_logger(__name__)
 
@@ -21,11 +22,12 @@ class OllamaEmbeddingService(EmbeddingService):
 
     async def embed(self, text: str) -> List[float]:
         url = f"{self._settings.ollama_base_url}/api/embeddings"
-        resp = await self._http.post(
-            url,
-            json={"model": self._model, "prompt": text},
-            timeout=self._settings.ollama_timeout_seconds,
-        )
+        with LLM_LATENCY.labels(call_type="embed").time():
+            resp = await self._http.post(
+                url,
+                json={"model": self._model, "prompt": text},
+                timeout=self._settings.ollama_timeout_seconds,
+            )
         resp.raise_for_status()
         data = resp.json()
         embedding = data.get("embedding")

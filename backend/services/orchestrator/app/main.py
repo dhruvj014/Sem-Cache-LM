@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 import httpx
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from prometheus_fastapi_instrumentator import Instrumentator
 
 from services.orchestrator.app.api.internal_orchestrator import (
     router as internal_orchestrator_router,
@@ -114,6 +115,7 @@ def create_app() -> FastAPI:
     app.include_router(
         internal_orchestrator_router, prefix="/internal", tags=["internal-orchestrator"]
     )
+    Instrumentator().instrument(app).expose(app)
     return app
 
 
