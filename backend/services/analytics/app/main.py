@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from prometheus_fastapi_instrumentator import Instrumentator
 
 from services.analytics.app.api.internal_analytics import (
     router as internal_analytics_router,
@@ -82,6 +83,7 @@ def create_app() -> FastAPI:
     app.include_router(
         internal_analytics_router, prefix="/internal", tags=["internal-analytics"]
     )
+    Instrumentator().instrument(app).expose(app)
     return app
 
 

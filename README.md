@@ -246,6 +246,70 @@ Open [http://localhost:5173](http://localhost:5173) while the API from Section 6
 
 ---
 
+## Observability (Prometheus + Grafana)
+
+Prometheus and Grafana start automatically when you run
+`docker compose up --build -d` — no extra setup needed.
+
+### URLs
+
+| Service    | URL                                                                 | Login         |
+|------------|---------------------------------------------------------------------|---------------|
+| Grafana    | http://localhost:3000                                               | admin / admin123 |
+| Prometheus | http://localhost:9090                                               | —             |
+| Dashboard  | http://localhost:3000/d/semcachelm-main/semcachelm-observability   | auto-loads    |
+
+### Grafana dashboard — 8 panels
+
+| Panel | What it shows |
+|-------|--------------|
+| 1 — Cache Decision Breakdown | Rate of CACHE_HIT / VALIDATE / LLM_FALLBACK over time |
+| 2 — Cache Hit Rate % | Live gauge of cache efficiency |
+| 3 — LLM Latency p50/p99 | Ollama inference vs embedding vs judge latency |
+| 4 — Similarity Score Distribution | Heatmap of cosine similarity scores |
+| 5 — Cache Size + Evictions | Qdrant entry count + eviction rate |
+| 6 — Redis Stream Lag | Async queue backlog |
+| 7 — HTTP Request Rate | Requests/sec per microservice |
+| 8 — HTTP p99 Latency | Slowest 1% of requests per service |
+
+Panels are empty until queries are sent through the app UI.
+Use the app normally — graphs update automatically every 10 seconds.
+
+### Key metrics tracked
+
+| Metric | What it measures |
+|--------|-----------------|
+| `semcachelm_cache_hits_total` | Queries served directly from cache |
+| `semcachelm_llm_fallback_total` | Queries that called Ollama for inference |
+| `semcachelm_validate_hits_total` | Gray-zone queries approved by LLM judge |
+| `semcachelm_validate_misses_total` | Gray-zone queries rejected by LLM judge |
+| `semcachelm_llm_latency_seconds` | Ollama call latency (embed / infer / judge) |
+| `semcachelm_similarity_score` | Cosine similarity score distribution |
+| `semcachelm_quality_score_observed` | EMA quality score at feedback time |
+| `semcachelm_cache_size_total` | Current entries in Qdrant |
+| `semcachelm_evictions_total` | Low-quality entries removed |
+| `semcachelm_redis_stream_pending` | Unacknowledged async queue messages |
+
+### Fault Tolerance
+
+| Failure scenario | System behavior |
+|-----------------|-----------------|
+| Ollama slow or down | Cache hits still served in ~18ms — no LLM needed |
+| One microservice crashes | Other 5 services keep running independently |
+| Container crashes | Docker restarts it automatically (`restart: unless-stopped`) |
+| Redis restarts | Data persists via `redis_data` volume |
+| Qdrant restarts | Vector data persists via `qdrant_data` volume |
+| Gray-zone similarity (0.70–0.92) | LLM judge validates before serving — prevents false hits |
+
+### Troubleshooting observability
+
+| Problem | Fix |
+|---------|-----|
+| Grafana login fails | Use `admin` / `admin123` (Grafana 10 rejects default `admin/admin`) |
+| Grafana panels show No Data | Send queries through the app UI first to generate metrics |
+| Prometheus targets show DOWN | Run `docker compose ps` — backend services may still be starting |
+| Port 3000 or 9090 in use | `lsof -i :3000` then kill the conflicting process |
+
 ## Quick reference (experienced setup)
 
 ```bash
@@ -253,6 +317,8 @@ Open [http://localhost:5173](http://localhost:5173) while the API from Section 6
 ollama pull llama3.1:8b && ollama pull nomic-embed-text
 docker compose up --build -d
 # UI: http://localhost:5173
+# Grafana:    http://localhost:3000   (admin / admin123)
+# Prometheus: http://localhost:9090
 
 # Manual (microservice mode)
 cd backend && python -m venv venv && . venv/bin/activate  # Windows: venv\Scripts\activate
