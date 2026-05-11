@@ -10,6 +10,11 @@ from shared.infra.qdrant_client import QdrantInfrastructure
 from shared.infra.redis_client import RedisInfrastructure
 from shared.models.schemas import CacheEntry, CacheHit, EvictionResult
 from shared.observability.logger import get_logger
+from shared.observability.metrics import (
+    CACHE_SIZE,
+    EVICTIONS_TOTAL,
+    QUALITY_SCORE_OBSERVED,
+)
 
 logger = get_logger(__name__)
 
@@ -160,6 +165,7 @@ class CacheService(CacheReader, CacheWriter):
                 )
             ],
         )
+        CACHE_SIZE.inc()
         await self._redis.client.set(QUALITY_KEY.format(cache_id=cache_id), "1.0")
         await self._redis.client.set(HIT_COUNT_KEY.format(cache_id=cache_id), "0")
         logger.info("cache.stored", cache_id=cache_id, query_preview=query[:80])
@@ -167,12 +173,14 @@ class CacheService(CacheReader, CacheWriter):
 
     async def promote(self, cache_id: str, new_quality: float) -> None:
         await self._redis.client.set(QUALITY_KEY.format(cache_id=cache_id), f"{new_quality:.6f}")
+        QUALITY_SCORE_OBSERVED.observe(float(new_quality))
         await self._redis.client.sadd(PROMOTE_FLAG_KEY, cache_id)
         await self._redis.client.srem(DEMOTE_FLAG_KEY, cache_id)
         logger.info("cache.promoted", cache_id=cache_id, quality=new_quality)
 
     async def demote(self, cache_id: str, new_quality: float) -> None:
         await self._redis.client.set(QUALITY_KEY.format(cache_id=cache_id), f"{new_quality:.6f}")
+        QUALITY_SCORE_OBSERVED.observe(float(new_quality))
         await self._redis.client.sadd(DEMOTE_FLAG_KEY, cache_id)
         logger.info("cache.demoted", cache_id=cache_id, quality=new_quality)
 
@@ -225,11 +233,14 @@ class CacheService(CacheReader, CacheWriter):
             for e in entries:
                 if e.quality_score < threshold:
                     await self.delete(e.id)
+                    EVICTIONS_TOTAL.inc()
                     evicted.append(e.id)
             if page * page_size >= total:
                 break
             page += 1
         logger.info("cache.evicted", count=len(evicted), threshold=threshold)
+        remaining_count = (await self._qdrant.client.count(self._collection)).count
+        CACHE_SIZE.set(remaining_count)
         return EvictionResult(evicted_ids=evicted, evicted_count=len(evicted))
 
     async def _get_quality(self, cache_id: str) -> float:

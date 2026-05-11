@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from prometheus_fastapi_instrumentator import Instrumentator
 
 from services.rag.app.api.catalog import router as catalog_router
 from services.rag.app.services.api_catalog_service import ApiCatalogService
@@ -107,6 +108,7 @@ def create_app() -> FastAPI:
     prefix = "/api/v1"
     app.include_router(catalog_router, prefix=prefix, tags=["catalog"])
     app.include_router(rag_internal_router, prefix="/internal", tags=["internal"])
+    Instrumentator().instrument(app).expose(app)
     return app
 
 

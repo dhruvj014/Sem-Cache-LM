@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 import httpx
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from prometheus_fastapi_instrumentator import Instrumentator
 
 from services.ai.app.api.internal_ai import router as internal_ai_router
 from services.ai.app.services.ai_inference_service import AIInferenceService
@@ -91,6 +92,7 @@ def create_app() -> FastAPI:
     )
     app.add_middleware(CorrelationIdMiddleware)
     app.include_router(internal_ai_router, prefix="/internal", tags=["internal-ai"])
+    Instrumentator().instrument(app).expose(app)
     return app
 
 

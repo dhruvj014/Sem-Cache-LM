@@ -41,6 +41,7 @@ from shared.jobs.redis_jobs import (
 from shared.models.enums import AgentAction, ResponseSource
 from shared.models.schemas import CacheHit, Citation, QueryResponse
 from shared.observability.logger import get_logger
+from shared.observability.metrics import record_query_response_metrics
 from services.orchestrator.app.domain.agent_decision import AgentDecisionLayer
 from services.orchestrator.app.domain.false_hit_detector import FalseHitDetector
 from services.orchestrator.app.domain.retrieval_rerank import rerank_hits_with_lexical_blend
@@ -498,6 +499,7 @@ class QueryStreamOrchestrator:
                     )
 
             response_payload.latency_ms = round(total.elapsed_ms, 2)
+            record_query_response_metrics(response_payload)
             await self._session.set(
                 session_id,
                 query,
