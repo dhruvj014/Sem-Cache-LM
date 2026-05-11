@@ -3,6 +3,7 @@ import { Link, Route, Routes, useLocation } from "react-router-dom";
 import ArchitectureModal from "./components/ArchitectureModal.jsx";
 import CommandPalette from "./components/CommandPalette.jsx";
 import EnvironmentStrip from "./components/EnvironmentStrip.jsx";
+import LandingPage from "./components/LandingPage.jsx";
 import Chat from "./pages/Chat.jsx";
 import CacheExplorer from "./pages/CacheExplorer.jsx";
 import Analytics from "./pages/Analytics.jsx";
@@ -18,6 +19,7 @@ const NAV = [
 
 export default function App() {
   const { pathname } = useLocation();
+  const [showLanding, setShowLanding] = useState(true);
   const [archOpen, setArchOpen] = useState(false);
   const register = useCommandRegistry((s) => s.register);
   const unregister = useCommandRegistry((s) => s.unregister);
@@ -27,6 +29,10 @@ export default function App() {
     register("openArchitecture", open);
     return () => unregister("openArchitecture");
   }, [register, unregister]);
+
+  if (showLanding) {
+    return <LandingPage onEnter={() => setShowLanding(false)} />;
+  }
 
   return (
     <div className="min-h-screen flex flex-col">
