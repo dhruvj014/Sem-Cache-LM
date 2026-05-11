@@ -1,0 +1,28 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: gateway
+    static_configs:
+      - targets: ["gateway:8000"]
+
+  - job_name: orchestrator
+    static_configs:
+      - targets: ["orchestrator:8005"]
+
+  - job_name: cache
+    static_configs:
+      - targets: ["cache:8002"]
+
+  - job_name: ai
+    static_configs:
+      - targets: ["ai:8004"]
+
+  - job_name: rag
+    static_configs:
+      - targets: ["rag:8001"]
+
+  - job_name: analytics
+    static_configs:
+      - targets: ["analytics:8003"]

@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from prometheus_fastapi_instrumentator import Instrumentator
 
 from services.cache.app.api.internal_cache import router as internal_cache_router
 from services.cache.app.services.cache_service import CacheService
@@ -84,6 +85,7 @@ def create_app() -> FastAPI:
     )
     app.add_middleware(CorrelationIdMiddleware)
     app.include_router(internal_cache_router, prefix="/internal", tags=["internal-cache"])
+    Instrumentator().instrument(app).expose(app)
     return app
 
 
