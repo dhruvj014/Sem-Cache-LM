@@ -22,6 +22,7 @@ from services.orchestrator.app.stream_worker import QueryStreamOrchestrator
 from shared.clients.http import HttpAIClient, HttpCacheClient, HttpRagClient
 from shared.config.settings import get_settings
 from shared.domain.decision_thresholds import DecisionThresholds
+from shared.infra.internal_auth import InternalAuthMiddleware
 from shared.infra.redis_client import RedisInfrastructure
 from shared.observability.correlation import CorrelationIdMiddleware
 from shared.observability.logger import configure_logging, get_logger
@@ -112,6 +113,7 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     app.add_middleware(CorrelationIdMiddleware)
+    app.add_middleware(InternalAuthMiddleware, token=settings.internal_service_token)
     app.include_router(
         internal_orchestrator_router, prefix="/internal", tags=["internal-orchestrator"]
     )

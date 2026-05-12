@@ -13,6 +13,7 @@ from services.analytics.app.api.internal_analytics import (
 from services.analytics.app.services.analytics_service import AnalyticsService
 from services.analytics.app.stream_worker import run_analytics_projector
 from shared.config.settings import get_settings
+from shared.infra.internal_auth import InternalAuthMiddleware
 from shared.infra.redis_client import RedisInfrastructure
 from shared.observability.correlation import CorrelationIdMiddleware
 from shared.observability.logger import configure_logging, get_logger
@@ -80,6 +81,7 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     app.add_middleware(CorrelationIdMiddleware)
+    app.add_middleware(InternalAuthMiddleware, token=settings.internal_service_token)
     app.include_router(
         internal_analytics_router, prefix="/internal", tags=["internal-analytics"]
     )
