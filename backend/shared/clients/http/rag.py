@@ -22,11 +22,18 @@ class HttpRagClient(RagClient):
         self._http = http_client
         self._base_url = (settings.rag_service_base_url or "").rstrip("/")
 
+    def _build_headers(self) -> dict[str, str]:
+        headers: dict[str, str] = {}
+        cid = self._get_correlation_id()
+        if cid:
+            headers["x-correlation-id"] = cid
+        token = self._settings.internal_service_token
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+        return headers
+
     async def answer(self, query: str) -> RagResult:
-        correlation_id = self._get_correlation_id()
-        headers = {}
-        if correlation_id:
-            headers["x-correlation-id"] = correlation_id
+        headers = self._build_headers()
 
         start = time.perf_counter()
         url = f"{self._base_url}/internal/v1/retrieve"

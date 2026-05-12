@@ -11,6 +11,7 @@ from services.cache.app.api.internal_cache import router as internal_cache_route
 from services.cache.app.services.cache_service import CacheService
 from services.cache.app.stream_worker import run_cache_stream_worker
 from shared.config.settings import get_settings
+from shared.infra.internal_auth import InternalAuthMiddleware
 from shared.infra.qdrant_client import QdrantInfrastructure
 from shared.infra.redis_client import RedisInfrastructure
 from shared.observability.correlation import CorrelationIdMiddleware
@@ -84,6 +85,7 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     app.add_middleware(CorrelationIdMiddleware)
+    app.add_middleware(InternalAuthMiddleware, token=settings.internal_service_token)
     app.include_router(internal_cache_router, prefix="/internal", tags=["internal-cache"])
     Instrumentator().instrument(app).expose(app)
     return app

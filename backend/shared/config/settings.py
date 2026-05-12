@@ -60,10 +60,38 @@ class Settings(BaseSettings):
     redis_port: int = 6379
     redis_db: int = 0
 
+    # ── Security ──────────────────────────────────────────────────────────────
+    internal_service_token: str = Field(
+        default="",
+        description=(
+            "Shared bearer token for service-to-service /internal/v1/* routes. "
+            "Empty string disables auth (safe for local dev). "
+            "On AWS inject from Secrets Manager via INTERNAL_SERVICE_TOKEN env var."
+        ),
+    )
+
+    # ── AI provider ───────────────────────────────────────────────────────────
+    ai_provider: str = Field(
+        default="ollama",
+        description="AI provider: 'ollama' (local) or 'gemini' (cloud). Controls embed + generate.",
+    )
+
+    # Ollama (used when ai_provider=ollama)
     ollama_base_url: str = "http://localhost:11434"
     ollama_llm_model: str = "llama3.1:8b"
     ollama_embedding_model: str = "nomic-embed-text"
     ollama_timeout_seconds: float = 240.0
+
+    # Gemini (used when ai_provider=gemini)
+    gemini_api_key: str = Field(default="", description="Google Gemini API key.")
+    gemini_llm_model: str = Field(
+        default="gemini-2.0-flash",
+        description="Gemini model for generation and judging.",
+    )
+    gemini_embedding_model: str = Field(
+        default="text-embedding-004",
+        description="Gemini model for embeddings. Must output 768-dim vectors to match Qdrant collection.",
+    )
 
     similarity_hit_threshold: float = 0.92
     similarity_gray_zone_low: float = 0.7

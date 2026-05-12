@@ -15,6 +15,7 @@ from services.rag.app.services.repo_catalog_service import RepoCatalogService
 from services.rag.app.api.rag_internal import router as rag_internal_router
 from services.rag.app.stream_worker import run_rag_stream_worker
 from shared.config.settings import get_settings
+from shared.infra.internal_auth import InternalAuthMiddleware
 from shared.infra.redis_client import RedisInfrastructure
 from shared.observability.correlation import CorrelationIdMiddleware
 from shared.observability.logger import configure_logging, get_logger
@@ -104,6 +105,7 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     app.add_middleware(CorrelationIdMiddleware)
+    app.add_middleware(InternalAuthMiddleware, token=settings.internal_service_token)
 
     prefix = "/api/v1"
     app.include_router(catalog_router, prefix=prefix, tags=["catalog"])

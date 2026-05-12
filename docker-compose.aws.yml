@@ -1,38 +1,324 @@
-# AWS-ready stack. Use with ECS task definitions or compose ecs.
-# All hosts/ports come from env vars at deploy time.
+# AWS-ready full-stack compose.
+# All sensitive values come from environment variables — never hard-coded here.
+# Usage: set the variables below in a .env file or CI/CD secret store, then:
+#   docker compose -f docker-compose.aws.yml up --build -d
+#
+# For local testing of the AWS code path (e.g. Gemini provider), copy this file's
+# env-var pattern into your local .env and run with AI_PROVIDER=gemini.
 
 services:
-  backend:
+  gateway:
     build:
       context: ./backend
       dockerfile: services/gateway/Dockerfile
-    image: semcachelm-backend:latest
+    image: semcachelm-gateway:latest
+    container_name: semcachelm-gateway
+    restart: unless-stopped
+    command: ["uvicorn", "services.gateway.app.main:app", "--host", "0.0.0.0", "--port", "8000"]
     environment:
-      - APP_ENV=${APP_ENV:-production}
-      - QDRANT_HOST=${QDRANT_HOST}
-      - QDRANT_PORT=${QDRANT_PORT:-6333}
-      - REDIS_HOST=${REDIS_HOST}
-      - REDIS_PORT=${REDIS_PORT:-6379}
-      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL}
-      - OLLAMA_LLM_MODEL=${OLLAMA_LLM_MODEL:-llama3.1:8b}
-      - OLLAMA_EMBEDDING_MODEL=${OLLAMA_EMBEDDING_MODEL:-nomic-embed-text}
-      - CORS_ORIGINS=${CORS_ORIGINS}
+      APP_ENV: ${APP_ENV:-production}
+      APP_VERSION: ${APP_VERSION:-1.0.0}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      CORS_ORIGINS: ${CORS_ORIGINS}
+      QDRANT_HOST: ${QDRANT_HOST:-qdrant}
+      QDRANT_PORT: ${QDRANT_PORT:-6333}
+      REDIS_HOST: ${REDIS_HOST:-redis}
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      AI_SERVICE_BASE_URL: http://ai:8004
+      CACHE_SERVICE_BASE_URL: http://cache:8002
+      RAG_SERVICE_BASE_URL: http://rag:8001
+      ANALYTICS_SERVICE_BASE_URL: http://analytics:8003
+      ORCHESTRATOR_SERVICE_BASE_URL: http://orchestrator:8005
+      QUERY_PIPELINE_ASYNC: "true"
+      STREAM_WORKERS_ENABLED: "true"
+      ANALYTICS_STREAM_CONSUMER_ENABLED: "true"
+      ANALYTICS_VIA_STREAM: "true"
+      GATEWAY_SYNC_QUERY_ENABLED: "false"
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN}
     ports:
       - "8000:8000"
+    depends_on:
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+      ai:
+        condition: service_started
+      cache:
+        condition: service_started
+      rag:
+        condition: service_started
+      analytics:
+        condition: service_started
+      orchestrator:
+        condition: service_started
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8000/api/v1/health > /dev/null || exit 1"]
       interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  rag:
+    build:
+      context: ./backend
+      dockerfile: services/rag/Dockerfile
+    image: semcachelm-rag:latest
+    container_name: semcachelm-rag
+    restart: unless-stopped
+    command: ["uvicorn", "services.rag.app.main:app", "--host", "0.0.0.0", "--port", "8001"]
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      APP_VERSION: ${APP_VERSION:-1.0.0}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      QDRANT_HOST: ${QDRANT_HOST:-qdrant}
+      QDRANT_PORT: ${QDRANT_PORT:-6333}
+      REDIS_HOST: ${REDIS_HOST:-redis}
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      RAG_REPO_PATH: ${RAG_REPO_PATH}
+      RAG_GITHUB_TOKEN: ${RAG_GITHUB_TOKEN:-}
+      RAG_ORG_REPO_LIMIT: ${RAG_ORG_REPO_LIMIT:-25}
+      RAG_REPO_CACHE_DIR: /data/rag_repo_cache
+      RAG_INDEX_DIR: /data/rag_index
+      RAG_CATALOG_DIR: /data/rag_catalog
+      RAG_QDRANT_HOST: ${QDRANT_HOST:-qdrant}
+      # Provider — Gemini on AWS, Ollama for local dev
+      AI_PROVIDER: ${AI_PROVIDER:-gemini}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_EMBEDDING_MODEL: ${GEMINI_EMBEDDING_MODEL:-text-embedding-004}
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN}
+    volumes:
+      - rag_data:/data
+    ports:
+      - "8001:8001"
+    depends_on:
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8001/metrics > /dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+
+  cache:
+    build:
+      context: ./backend
+      dockerfile: services/cache/Dockerfile
+    image: semcachelm-cache:latest
+    container_name: semcachelm-cache
+    restart: unless-stopped
+    command: ["uvicorn", "services.cache.app.main:app", "--host", "0.0.0.0", "--port", "8002"]
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      APP_VERSION: ${APP_VERSION:-1.0.0}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      QDRANT_HOST: ${QDRANT_HOST:-qdrant}
+      QDRANT_PORT: ${QDRANT_PORT:-6333}
+      REDIS_HOST: ${REDIS_HOST:-redis}
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      STREAM_WORKERS_ENABLED: "true"
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN}
+    ports:
+      - "8002:8002"
+    depends_on:
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8002/metrics > /dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  analytics:
+    build:
+      context: ./backend
+      dockerfile: services/analytics/Dockerfile
+    image: semcachelm-analytics:latest
+    container_name: semcachelm-analytics
+    restart: unless-stopped
+    command: ["uvicorn", "services.analytics.app.main:app", "--host", "0.0.0.0", "--port", "8003"]
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      APP_VERSION: ${APP_VERSION:-1.0.0}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      REDIS_HOST: ${REDIS_HOST:-redis}
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      ANALYTICS_STREAM_CONSUMER_ENABLED: "true"
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN}
+    ports:
+      - "8003:8003"
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8003/metrics > /dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  ai:
+    build:
+      context: ./backend
+      dockerfile: services/ai/Dockerfile
+    image: semcachelm-ai:latest
+    container_name: semcachelm-ai
+    restart: unless-stopped
+    command: ["uvicorn", "services.ai.app.main:app", "--host", "0.0.0.0", "--port", "8004"]
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      APP_VERSION: ${APP_VERSION:-1.0.0}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      REDIS_HOST: ${REDIS_HOST:-redis}
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      STREAM_WORKERS_ENABLED: "true"
+      # Provider — Gemini on AWS (no Ollama on Fargate), Ollama for local dev
+      AI_PROVIDER: ${AI_PROVIDER:-gemini}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_LLM_MODEL: ${GEMINI_LLM_MODEL:-gemini-2.0-flash}
+      GEMINI_EMBEDDING_MODEL: ${GEMINI_EMBEDDING_MODEL:-text-embedding-004}
+      # Ollama vars kept so the same image works locally with AI_PROVIDER=ollama
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-}
+      OLLAMA_LLM_MODEL: ${OLLAMA_LLM_MODEL:-llama3.1:8b}
+      OLLAMA_EMBEDDING_MODEL: ${OLLAMA_EMBEDDING_MODEL:-nomic-embed-text}
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN}
+    ports:
+      - "8004:8004"
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8004/metrics > /dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  orchestrator:
+    build:
+      context: ./backend
+      dockerfile: services/orchestrator/Dockerfile
+    image: semcachelm-orchestrator:latest
+    container_name: semcachelm-orchestrator
+    restart: unless-stopped
+    command: ["uvicorn", "services.orchestrator.app.main:app", "--host", "0.0.0.0", "--port", "8005"]
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      APP_VERSION: ${APP_VERSION:-1.0.0}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      REDIS_HOST: ${REDIS_HOST:-redis}
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      AI_SERVICE_BASE_URL: http://ai:8004
+      CACHE_SERVICE_BASE_URL: http://cache:8002
+      RAG_SERVICE_BASE_URL: http://rag:8001
+      QUERY_PIPELINE_ASYNC: "true"
+      ANALYTICS_VIA_STREAM: "true"
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN}
+    ports:
+      - "8005:8005"
+    depends_on:
+      redis:
+        condition: service_healthy
+      ai:
+        condition: service_started
+      cache:
+        condition: service_started
+      rag:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8005/metrics > /dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  qdrant:
+    image: qdrant/qdrant:v1.11.0
+    container_name: semcachelm-qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c ':> /dev/tcp/127.0.0.1/6333' || exit 1"]
+      interval: 10s
       timeout: 5s
-      retries: 3
+      retries: 5
+
+  redis:
+    image: redis:7.2-alpine
+    container_name: semcachelm-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        VITE_API_URL: ${VITE_API_URL}
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
     image: semcachelm-frontend:latest
+    container_name: semcachelm-frontend
+    restart: unless-stopped
     ports:
       - "80:80"
     depends_on:
-      - backend
+      gateway:
+        condition: service_started
+
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    container_name: semcachelm-prometheus
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.enable-lifecycle'
+    depends_on:
+      gateway:
+        condition: service_healthy
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:10.4.0
+    container_name: semcachelm-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin123}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_DISABLE_LOGIN_FORM: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_SECURITY_ALLOW_EMBEDDING: "true"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      prometheus:
+        condition: service_started
+    restart: unless-stopped
+
+volumes:
+  qdrant_data:
+  redis_data:
+  rag_data:

@@ -52,11 +52,18 @@ class HttpAIClient(EmbeddingService, LLMClient):
         except Exception:
             return False
 
-    async def _post(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
+    def _build_headers(self) -> dict[str, str]:
         headers: dict[str, str] = {}
         cid = structlog.contextvars.get_contextvars().get("correlation_id")
         if cid:
             headers["x-correlation-id"] = str(cid)
+        token = self._settings.internal_service_token
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+        return headers
+
+    async def _post(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
+        headers = self._build_headers()
         resp = await self._http.request(
             "POST",
             f"{self._base_url}{path}",

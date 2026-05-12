@@ -62,6 +62,16 @@ class HttpAnalyticsClient(AnalyticsClient):
         except Exception:
             return False
 
+    def _build_headers(self) -> dict[str, str]:
+        headers: dict[str, str] = {}
+        cid = structlog.contextvars.get_contextvars().get("correlation_id")
+        if cid:
+            headers["x-correlation-id"] = str(cid)
+        token = self._settings.internal_service_token
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+        return headers
+
     async def _request(
         self,
         method: str,
@@ -69,10 +79,7 @@ class HttpAnalyticsClient(AnalyticsClient):
         json: dict[str, Any] | None = None,
         params: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        headers = {}
-        cid = structlog.contextvars.get_contextvars().get("correlation_id")
-        if cid:
-            headers["x-correlation-id"] = str(cid)
+        headers = self._build_headers()
         resp = await self._http.request(
             method,
             f"{self._base_url}{path}",
