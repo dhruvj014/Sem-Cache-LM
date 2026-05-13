@@ -3,13 +3,7 @@
 ## For teammates — getting started after git pull
 
 ### Prerequisites (one-time setup on your machine)
-Install Ollama: https://ollama.ai
-Then run:
-```bash
-ollama pull llama3.1:8b
-ollama pull nomic-embed-text
-ollama serve
-```
+Set **`GEMINI_API_KEY`** in `.env` at the repo root (see [`backend/.env.example`](backend/.env.example)). The AI and RAG services call Google Gemini over HTTPS.
 
 ### Start everything (app + observability) in one command
 ```bash
@@ -56,7 +50,7 @@ docker compose down
 
 ### Fault tolerance
 - All containers restart automatically if they crash (`restart: unless-stopped`).
-- Cache hits are served even if Ollama is slow or down.
+- Cache hits are served even if **Gemini** is slow or unreachable.
 - Losing one microservice does not take down the others.
 - Redis and Qdrant data persists across restarts (named volumes).
 - Prometheus only starts scraping after every backend service reports healthy, so cold-start metrics aren't lost.
@@ -66,6 +60,6 @@ docker compose down
 |------------------------|-----------------------------------------------------------|
 | Grafana shows no data  | Send a few queries in the app UI first                    |
 | Container not starting | `docker compose logs <service-name>`                      |
-| Ollama not reachable   | Make sure `ollama serve` is running on the host           |
+| LLM provider unreachable | Confirm **`GEMINI_API_KEY`** and outbound HTTPS; check AI/RAG container logs |
 | Port conflict          | `lsof -i :3000` (or `:9090`) and kill the process         |
 | Login error in Grafana | Use `admin / admin123` — first login may prompt to change; click **Skip** |

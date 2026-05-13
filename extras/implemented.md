@@ -36,7 +36,7 @@ Summary of shipped UI and API features for demos and grading.
 
 ### 6. Architecture & data-flow modal
 
-- **What:** SVG diagram (browser → FastAPI → Qdrant / Redis / Ollama → response) plus bullet list of each service’s role.
+- **What:** SVG diagram (browser → FastAPI → Qdrant / Redis / Gemini → response) plus bullet list of each service’s role.
 - **Where:** `frontend/src/components/ArchitectureModal.jsx`. Open via **Architecture** in the header or the command palette.
 
 ### 7. Version / environment strip

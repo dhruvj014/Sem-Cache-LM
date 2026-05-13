@@ -27,11 +27,11 @@
 
 3. **Cache validator / LLM calls** — Memoize `(normalized_query, cache_id) → verdict` in Redis with TTL to skip repeated judge calls.
 
-4. **Async or streaming** — Stream tokens from Ollama to TTFB; overlap embed + Qdrant round-trip where possible.
+4. **Async or streaming** — Stream tokens from Gemini to TTFB; overlap embed + Qdrant round-trip where possible.
 
 5. **Smaller / faster embed model for routing** — Dedicated small model for retrieval, larger model only for final answer (if you split pipelines).
 
-6. **Batch embedding** — If you add batch endpoints, warm multiple queries in one Ollama call for benchmarks or bulk ingest.
+6. **Batch embedding** — If you add batch endpoints, warm multiple queries in one Gemini batch/embed call for benchmarks or bulk ingest.
 
 7. **Qdrant tuning** — `hnsw_ef`, `exact` for small collections, or `quantization` for large local indexes; fewer points + good payload filters = faster search.
 

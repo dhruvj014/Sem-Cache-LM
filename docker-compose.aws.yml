@@ -3,8 +3,7 @@
 # Usage: set the variables below in a .env file or CI/CD secret store, then:
 #   docker compose -f docker-compose.aws.yml up --build -d
 #
-# For local testing of the AWS code path (e.g. Gemini provider), copy this file's
-# env-var pattern into your local .env and run with AI_PROVIDER=gemini.
+# For local testing of the AWS code path, copy this file's env-var pattern into your local `.env`.
 
 services:
   gateway:
@@ -35,6 +34,8 @@ services:
       ANALYTICS_VIA_STREAM: "true"
       GATEWAY_SYNC_QUERY_ENABLED: "false"
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN}
+      GEMINI_LLM_MODEL: ${GEMINI_LLM_MODEL:-gemini-2.5-flash-lite}
+      GEMINI_EMBEDDING_MODEL: ${GEMINI_EMBEDDING_MODEL:-gemini-embedding-001}
     ports:
       - "8000:8000"
     depends_on:
@@ -79,13 +80,12 @@ services:
       RAG_GITHUB_TOKEN: ${RAG_GITHUB_TOKEN:-}
       RAG_ORG_REPO_LIMIT: ${RAG_ORG_REPO_LIMIT:-25}
       RAG_REPO_CACHE_DIR: /data/rag_repo_cache
-      RAG_INDEX_DIR: /data/rag_index
       RAG_CATALOG_DIR: /data/rag_catalog
       RAG_QDRANT_HOST: ${QDRANT_HOST:-qdrant}
-      # Provider — Gemini on AWS, Ollama for local dev
-      AI_PROVIDER: ${AI_PROVIDER:-gemini}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-      GEMINI_EMBEDDING_MODEL: ${GEMINI_EMBEDDING_MODEL:-text-embedding-004}
+      GEMINI_LLM_MODEL: ${GEMINI_LLM_MODEL:-gemini-2.5-flash-lite}
+      GEMINI_EMBEDDING_MODEL: ${GEMINI_EMBEDDING_MODEL:-gemini-embedding-001}
+      GEMINI_TIMEOUT_SECONDS: ${GEMINI_TIMEOUT_SECONDS:-120}
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN}
     volumes:
       - rag_data:/data
@@ -178,15 +178,10 @@ services:
       REDIS_HOST: ${REDIS_HOST:-redis}
       REDIS_PORT: ${REDIS_PORT:-6379}
       STREAM_WORKERS_ENABLED: "true"
-      # Provider — Gemini on AWS (no Ollama on Fargate), Ollama for local dev
-      AI_PROVIDER: ${AI_PROVIDER:-gemini}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-      GEMINI_LLM_MODEL: ${GEMINI_LLM_MODEL:-gemini-2.0-flash}
-      GEMINI_EMBEDDING_MODEL: ${GEMINI_EMBEDDING_MODEL:-text-embedding-004}
-      # Ollama vars kept so the same image works locally with AI_PROVIDER=ollama
-      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-}
-      OLLAMA_LLM_MODEL: ${OLLAMA_LLM_MODEL:-llama3.1:8b}
-      OLLAMA_EMBEDDING_MODEL: ${OLLAMA_EMBEDDING_MODEL:-nomic-embed-text}
+      GEMINI_LLM_MODEL: ${GEMINI_LLM_MODEL:-gemini-2.5-flash-lite}
+      GEMINI_EMBEDDING_MODEL: ${GEMINI_EMBEDDING_MODEL:-gemini-embedding-001}
+      GEMINI_TIMEOUT_SECONDS: ${GEMINI_TIMEOUT_SECONDS:-120}
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN}
     ports:
       - "8004:8004"

@@ -38,7 +38,6 @@ Important files:
 - `backend/services/orchestrator/app/main.py`
 - `backend/services/orchestrator/app/query_router.py`
 - `backend/services/orchestrator/app/stream_worker.py`
-- `backend/services/orchestrator/app/api/internal_orchestrator.py`
 
 ### Cache Service (`backend/services/cache`)
 
@@ -51,11 +50,12 @@ Important files:
 
 ### RAG Service (`backend/services/rag`)
 
-Role: retrieval-augmented answers and repository/API catalog generation.
+Role: retrieval-augmented answers and repository/API catalog generation. Indexes live in **Qdrant** (per-repo collections) with **Redis** manifest fingerprints; each question runs **parallel retrieval** across corpora, merges the top chunks, then **one** LLM synthesis pass (`rag_service.py`).
 
 Important files:
 
 - `backend/services/rag/app/main.py`
+- `backend/services/rag/app/services/rag_service.py`
 - `backend/services/rag/app/api/rag_internal.py`
 - `backend/rag_catalog/repo_catalog.md`
 - `backend/rag_catalog/api_catalog.md`
@@ -71,7 +71,7 @@ Important files:
 
 ### AI Service (`backend/services/ai`)
 
-Role: internal embedding and generation APIs, provider-backed by Ollama services.
+Role: internal embedding and generation APIs via **Google Gemini** (same stack as RAG LlamaIndex integrations).
 
 Important files:
 
@@ -125,7 +125,7 @@ The primary path is `POST /api/v1/query` in `backend/services/gateway/app/api/v1
   - validator/session state,
   - analytics/event support,
   - catalog artifact caching.
-- **Ollama**: embeddings and LLM inference provider.
+- **Google Gemini**: embeddings and LLM inference for AI + RAG index/query paths.
 
 ## 5) Configuration Model
 
@@ -135,7 +135,7 @@ Key categories:
 
 - app/runtime (`app_env`, `app_version`, `log_level`, CORS)
 - infrastructure (`qdrant_*`, `redis_*`)
-- model/provider (`ollama_*`)
+- model/provider (`gemini_*`)
 - cache/decision tuning (`similarity_*`, `quality_*`, rerank controls)
 - session/validator controls (`session_context_ttl_seconds`, `validator_cache_ttl_seconds`)
 - RAG/catalog settings (`rag_*`)

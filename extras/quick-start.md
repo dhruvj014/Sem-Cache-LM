@@ -1,8 +1,8 @@
 # Quick Start — SemCacheLM (local dev)
 
-Assumes Docker Desktop, Python 3.11+, Node 18+, and [Ollama](https://ollama.com) are installed.
+Assumes Docker Desktop, Python 3.11+, Node 18+. Set **`GEMINI_API_KEY`** in `.env` (repo root for Compose, and/or `backend/.env` for local uvicorn).
 
-**Important:** The gateway does **not** embed Qdrant or call Ollama directly. It talks to standalone services over HTTP (`AI_SERVICE_BASE_URL`, `CACHE_SERVICE_BASE_URL`, `RAG_SERVICE_BASE_URL`, `ANALYTICS_SERVICE_BASE_URL`, `ORCHESTRATOR_SERVICE_BASE_URL`). For queries to work you must run **AI + Cache + RAG + Analytics + Orchestrator** alongside the gateway (see run section), or point those URLs at reachable deployments.
+**Important:** The gateway does **not** embed Qdrant or call Gemini directly. It talks to standalone services over HTTP (`AI_SERVICE_BASE_URL`, `CACHE_SERVICE_BASE_URL`, `RAG_SERVICE_BASE_URL`, `ANALYTICS_SERVICE_BASE_URL`, `ORCHESTRATOR_SERVICE_BASE_URL`). For queries to work you must run **AI + Cache + RAG + Analytics + Orchestrator** alongside the gateway (see run section), or point those URLs at reachable deployments.
 
 Use **`PYTHONPATH`** so Python can import `services.*` and `shared.*`:
 
@@ -17,12 +17,7 @@ Use **`PYTHONPATH`** so Python can import `services.*` and `shared.*`:
 
 Brings up Redis + Qdrant + gateway + orchestrator + AI + cache + RAG + analytics + the frontend.
 
-1. Start Ollama on your host (port `11434`) and pull models once:
-
-```bash
-ollama pull llama3.1:8b
-ollama pull nomic-embed-text
-```
+1. Set **`GEMINI_API_KEY`** in a repo-root `.env` (used by Docker Compose).
 
 2. From the repo root:
 
@@ -61,16 +56,9 @@ docker exec semcachelm-redis redis-cli ping       # PONG
 
 ---
 
-## 2 — Ollama (AI + RAG services)
+## 2 — Gemini API key
 
-Pull models once per machine:
-
-```powershell
-ollama pull llama3.1:8b
-ollama pull nomic-embed-text
-```
-
-Keep the Ollama daemon on **port 11434**. The **AI** (`8004`) and **RAG** (`8001`) services use it for embeddings / LLM.
+Set **`GEMINI_API_KEY`** in `backend/.env` or repo-root `.env` before bringing up Compose or running uvicorn.
 
 ---
 
@@ -123,9 +111,9 @@ uvicorn services.orchestrator.app.main:app --port 8005 --reload
 ```
 
 - Swagger (gateway) → http://localhost:8000/api/v1/docs  
-- Health (gateway) → http://localhost:8000/api/v1/health — reports **`redis`** and **`ai_service`** reachability (not gateway-local Qdrant/Ollama). Stream backlog: **`GET /api/v1/health/streams`**.
+- Health (gateway) → http://localhost:8000/api/v1/health — reports **`redis`** and **`ai_service`** reachability (not gateway-local Qdrant or the LLM provider). Stream backlog: **`GET /api/v1/health/streams`**.
 
-**RAG index storage (default):** vectors go to **Qdrant** (`RAG_QDRANT_*`), one logical collection per repo (`{RAG_QDRANT_COLLECTION}__{repo}`). **Redis** keys under `RAG_REDIS_MANIFEST_PREFIX` store fingerprints so re-ingest runs when files or embedding/chunk settings change. Clones under `RAG_REPO_CACHE_DIR` stay ephemeral. Use **`RAG_PERSIST_VECTORS_IN_QDRANT=false`** only for the legacy on-disk **`RAG_INDEX_DIR`** store.
+**RAG index storage:** vectors go to **Qdrant** (`RAG_QDRANT_*`), one logical collection per repo (`{RAG_QDRANT_COLLECTION}__{repo}`). **Redis** keys under `RAG_REDIS_MANIFEST_PREFIX` store fingerprints so re-ingest runs when files or embedding/chunk settings change. Clones under `RAG_REPO_CACHE_DIR` stay ephemeral. Queries retrieve in parallel across corpora, merge the top chunks, then run **one** LLM synthesis pass.
 
 ---
 
