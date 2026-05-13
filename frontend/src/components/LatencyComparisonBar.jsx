@@ -1,12 +1,7 @@
-import { useQuery } from "@tanstack/react-query";
-import { api } from "../api/client.js";
+import { useSummaryQuery } from "../hooks/useLiveStats.js";
 
 export default function LatencyComparisonBar() {
-  const { data } = useQuery({
-    queryKey: ["summary"],
-    queryFn: () => api.summary(),
-    refetchInterval: 3000,
-  });
+  const { data } = useSummaryQuery();
 
   const cache = data?.avg_cache_latency_ms || 0;
   const llm = data?.avg_llm_latency_ms || 0;

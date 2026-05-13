@@ -1,5 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
-import { api } from "../api/client.js";
+import { useHealthQuery, useSummaryQuery } from "../hooks/useLiveStats.js";
 
 const SERVICE_LABELS = {
   redis: "Redis",
@@ -21,16 +20,8 @@ function Dot({ ok }) {
 }
 
 export default function SystemMonitorPanel() {
-  const summary = useQuery({
-    queryKey: ["summary"],
-    queryFn: () => api.summary(),
-    refetchInterval: 3000,
-  });
-  const health = useQuery({
-    queryKey: ["health"],
-    queryFn: () => api.health(),
-    refetchInterval: 4000,
-  });
+  const summary = useSummaryQuery();
+  const health = useHealthQuery();
 
   const s = summary.data;
   const h = health.data;

@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../api/client.js";
+import { useSummaryQuery } from "../hooks/useLiveStats.js";
 import HitRateChart from "../components/charts/HitRateChart.jsx";
 import LatencyBarChart from "../components/charts/LatencyBarChart.jsx";
 import DecisionDonut from "../components/charts/DecisionDonut.jsx";
@@ -18,11 +19,7 @@ function StatCard({ label, value, hint }) {
 }
 
 export default function Analytics() {
-  const summary = useQuery({
-    queryKey: ["summary"],
-    queryFn: () => api.summary(),
-    refetchInterval: 4000,
-  });
+  const summary = useSummaryQuery({ refetchInterval: 4000 });
   const history = useQuery({
     queryKey: ["history"],
     queryFn: () => api.history(50),

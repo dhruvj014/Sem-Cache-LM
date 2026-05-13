@@ -5,6 +5,7 @@ async function request(path, options = {}) {
   const res = await fetch(`${BASE_URL}${PREFIX}${path}`, {
     headers: { "Content-Type": "application/json" },
     ...options,
+    cache: options.cache ?? "no-store",
   });
   const json = await res.json().catch(() => ({}));
   if (!res.ok || json.success === false) {
@@ -20,6 +21,7 @@ async function request(path, options = {}) {
 async function submitQueryAndWait(body) {
   const res = await fetch(`${BASE_URL}${PREFIX}/query`, {
     method: "POST",
+    cache: "no-store",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
@@ -37,6 +39,7 @@ async function submitQueryAndWait(body) {
     let delay = 80;
     while (Date.now() < deadline) {
       const pollRes = await fetch(`${BASE_URL}${PREFIX}/query/${jobId}`, {
+        cache: "no-store",
         headers: { "Content-Type": "application/json" },
       });
       const pollJson = await pollRes.json().catch(() => ({}));

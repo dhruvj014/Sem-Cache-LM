@@ -1,15 +1,10 @@
-import { useQuery } from "@tanstack/react-query";
 import { Coins, Sparkles, Zap } from "lucide-react";
-import { api } from "../api/client.js";
+import { useSummaryQuery } from "../hooks/useLiveStats.js";
 
 const ILLUSTRATIVE_USD_PER_1K = 0.002;
 
 export default function SavingsTicker() {
-  const { data, isFetching } = useQuery({
-    queryKey: ["summary"],
-    queryFn: () => api.summary(),
-    refetchInterval: 3000,
-  });
+  const { data, isFetching } = useSummaryQuery();
 
   const tokens = data?.estimated_tokens_saved ?? 0;
   const hits = data?.cache_hits ?? 0;
