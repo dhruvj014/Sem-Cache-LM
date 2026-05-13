@@ -188,6 +188,16 @@ export default function Chat() {
     }
   };
 
+  const regenerateLastResponse = async () => {
+    const lastUserMessage = [...messages]
+      .reverse()
+      .find((m) => m.role === "user");
+  
+    if (!lastUserMessage) return;
+  
+    await sendQuery(lastUserMessage.content);
+  };
+
   const onSubmit = async (e) => {
     e.preventDefault();
     const q = input;
@@ -271,7 +281,7 @@ export default function Chat() {
             </div>
           )}
           {messages.map((m) => (
-            <ResponseCard key={m.id} message={m} />
+            <ResponseCard key={m.id} message={m} onRegenerate={regenerateLastResponse} busy={busy} />
           ))}
         </div>
 
