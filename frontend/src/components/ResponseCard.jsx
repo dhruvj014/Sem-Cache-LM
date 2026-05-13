@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, Copy } from "lucide-react";
 import { useState } from "react";
 import DecisionTraceCard from "./DecisionTraceCard.jsx";
 import SourceBadge from "./SourceBadge.jsx";
@@ -13,8 +13,21 @@ function assistantBodyIsLong(text) {
 export default function ResponseCard({ message }) {
   const toggleBody = useSessionStore((s) => s.toggleMessageBodyCollapsed);
   const [showAllCitations, setShowAllCitations] = useState(false);
+  const [copied, setCopied] = useState(false);
   const isUser = message.role === "user";
   const long = !isUser && assistantBodyIsLong(message.content);
+
+  const copyResponse = async () => {
+    try {
+      await navigator.clipboard.writeText(message.content);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    } catch {
+      // TODO
+      // Ignoring clipboard failures silently
+    }
+  };
+
   if (isUser) {
     return (
       <div className="flex justify-end">
@@ -41,6 +54,17 @@ export default function ResponseCard({ message }) {
       className="max-w-3xl"
     >
       <div className="glass rounded-xl px-4 py-3">
+        <div className="mb-2 flex justify-end">
+          <button
+            type="button"
+            onClick={copyResponse}
+            className="flex items-center gap-1 rounded-md border border-slate-700/80 px-2 py-1 text-[11px] text-slate-400 hover:border-emerald-500/60 hover:text-emerald-300"
+            title="Copy response"
+          >
+            {copied ? <Check size={13} /> : <Copy size={13} />}
+            {copied ? "Copied" : "Copy"}
+          </button>
+        </div>
         <div
           className={`text-sm whitespace-pre-wrap leading-relaxed text-slate-100 ${
             long && collapsed ? "line-clamp-2" : ""
