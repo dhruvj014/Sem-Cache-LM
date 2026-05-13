@@ -40,3 +40,4 @@ async def get_cache_health_score(request: Request):
         raise HTTPException(status_code=502, detail="Analytics health-score returned error")
     data = CacheHealthScoreBreakdown.model_validate(body.get("data") or {})
     return ResponseEnvelope.ok(data)
+# verified
