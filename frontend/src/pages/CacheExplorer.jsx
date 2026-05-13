@@ -3,9 +3,12 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Trash, Ban } from "lucide-react";
 import { api } from "../api/client.js";
 import CacheTable from "../components/CacheTable.jsx";
+import CacheSearchPanel from "../components/CacheSearchPanel.jsx";
+import CacheWarmingPanel from "../components/CacheWarmingPanel.jsx";
 
 export default function CacheExplorer() {
   const qc = useQueryClient();
+  const [tab, setTab] = useState("browse");
   const [toast, setToast] = useState(null);
   const [invMode, setInvMode] = useState("source");
   const [invValue, setInvValue] = useState("");
@@ -72,6 +75,31 @@ export default function CacheExplorer() {
         </div>
       </div>
 
+      <div className="flex gap-1 border-b border-slate-800 pb-2">
+        {[
+          { id: "browse", label: "Browse" },
+          { id: "search", label: "Search & filter" },
+          { id: "warm", label: "Warming" },
+        ].map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => setTab(t.id)}
+            className={`px-3 py-1.5 rounded-md text-sm transition ${
+              tab === t.id
+                ? "bg-slate-800 text-white"
+                : "text-slate-400 hover:bg-slate-800/60 hover:text-slate-100"
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "search" && <CacheSearchPanel />}
+      {tab === "warm" && <CacheWarmingPanel />}
+
+      {tab !== "browse" ? null : (
       <div className="glass rounded-lg border border-slate-600/40 p-4 space-y-3">
         <div className="text-sm font-medium text-slate-200">RAG-linked invalidation</div>
         <p className="text-xs text-slate-400">
@@ -115,6 +143,7 @@ export default function CacheExplorer() {
           </div>
         )}
       </div>
+      )}
 
       {toast && (
         <div className="glass rounded-md px-4 py-2 text-sm text-emerald-300 border border-emerald-500/40">
@@ -122,14 +151,15 @@ export default function CacheExplorer() {
         </div>
       )}
 
-      {isLoading ? (
-        <div className="text-slate-500 text-sm">Loading…</div>
-      ) : (
-        <CacheTable
-          entries={data?.entries || []}
-          onDelete={(id) => deleteMut.mutate(id)}
-        />
-      )}
+      {tab === "browse" &&
+        (isLoading ? (
+          <div className="text-slate-500 text-sm">Loading…</div>
+        ) : (
+          <CacheTable
+            entries={data?.entries || []}
+            onDelete={(id) => deleteMut.mutate(id)}
+          />
+        ))}
     </div>
   );
 }

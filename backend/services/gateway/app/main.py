@@ -6,12 +6,17 @@ from prometheus_fastapi_instrumentator import Instrumentator
 
 from services.gateway.app.api.v1 import (
     analytics,
+    analytics_export,
     cache,
+    cache_health,
     cache_invalidate,
+    cache_search,
+    cache_warm,
     decision_thresholds_api,
     feedback,
     health,
     query,
+    threshold_config,
 )
 from services.gateway.app.config import get_settings
 from services.gateway.app.services.feedback_service import FeedbackService
@@ -53,6 +58,10 @@ async def lifespan(app: FastAPI):
     app.state.analytics_boundary = analytics_client
     app.state.feedback_service = FeedbackService(settings, redis_infra, http_cache_client)
     app.state.decision_thresholds = decision_thresholds
+    app.state.runtime_quality = {
+        "quality_ema_alpha": float(settings.quality_ema_alpha),
+        "quality_eviction_threshold": float(settings.quality_eviction_threshold),
+    }
     logger.info("app.started")
     try:
         yield
@@ -88,8 +97,13 @@ def create_app() -> FastAPI:
     app.include_router(feedback.router, prefix=prefix, tags=["feedback"])
     app.include_router(cache.router, prefix=prefix, tags=["cache"])
     app.include_router(cache_invalidate.router, prefix=prefix, tags=["cache-invalidate"])
+    app.include_router(cache_health.router, prefix=prefix, tags=["cache-health"])
+    app.include_router(cache_search.router, prefix=prefix, tags=["cache-search"])
+    app.include_router(cache_warm.router, prefix=prefix, tags=["cache-warm"])
     app.include_router(analytics.router, prefix=prefix, tags=["analytics"])
+    app.include_router(analytics_export.router, prefix=prefix, tags=["analytics-export"])
     app.include_router(decision_thresholds_api.router, prefix=prefix, tags=["config"])
+    app.include_router(threshold_config.router, prefix=prefix, tags=["config-thresholds"])
 
     Instrumentator().instrument(app).expose(app)
     return app

@@ -58,6 +58,20 @@ async function submitQueryAndWait(body) {
   return json.data;
 }
 
+async function exportAnalyticsBlob(format) {
+  const res = await fetch(`${BASE_URL}${PREFIX}/analytics/export?format=${format}`, {
+    headers: { Accept: "*/*" },
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err?.error?.message || `Export failed: ${res.status}`);
+  }
+  const blob = await res.blob();
+  const filename =
+    format === "csv" ? "semcachelm-analytics.csv" : "semcachelm-analytics.json";
+  return { blob, filename };
+}
+
 export const api = {
   query: (query, sessionId, opts = {}) => {
     const body = {
@@ -102,4 +116,36 @@ export const api = {
   summary: () => request("/analytics/summary"),
   history: (limit = 20) => request(`/analytics/history?limit=${limit}`),
   health: () => request("/health"),
+  getCacheHealthScore: () => request("/cache/health-score"),
+  exportAnalytics: exportAnalyticsBlob,
+  exportAnalyticsJSON: () => exportAnalyticsBlob("json"),
+  exportAnalyticsCSV: () => exportAnalyticsBlob("csv"),
+  searchCache: ({
+    query = "",
+    minQuality = 0,
+    maxQuality = 1,
+    sortBy = "quality",
+    page = 1,
+    pageSize = 20,
+  } = {}) => {
+    const p = new URLSearchParams();
+    if (query) p.set("query", query);
+    p.set("min_quality", String(minQuality));
+    p.set("max_quality", String(maxQuality));
+    p.set("sort_by", sortBy);
+    p.set("page", String(page));
+    p.set("page_size", String(pageSize));
+    return request(`/cache/search?${p.toString()}`);
+  },
+  getThresholds: () => request("/config/thresholds"),
+  updateThresholds: (body) =>
+    request("/config/thresholds", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  warmCache: (body) =>
+    request("/cache/warm", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
 };

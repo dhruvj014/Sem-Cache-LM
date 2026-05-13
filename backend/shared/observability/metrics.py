@@ -76,6 +76,24 @@ INVALIDATIONS_TOTAL = Counter(
     "Semantic cache entries removed by RAG-linked invalidation",
 )
 
+CACHE_HEALTHY_ENTRIES = Gauge(
+    "semcachelm_cache_healthy_entries",
+    "Semantic cache entries with quality score > 0.8",
+)
+CACHE_DEGRADING_ENTRIES = Gauge(
+    "semcachelm_cache_degrading_entries",
+    "Semantic cache entries with quality in [0.3, 0.8]",
+)
+CACHE_CRITICAL_ENTRIES = Gauge(
+    "semcachelm_cache_critical_entries",
+    "Semantic cache entries with quality score < 0.3",
+)
+
+CACHE_WARM_TOTAL = Counter(
+    "semcachelm_cache_warm_total",
+    "Semantic cache entries created via cache warming",
+)
+
 
 def record_query_response_metrics(response_payload: QueryResponse) -> None:
     """Record decision and similarity metrics after a query outcome is resolved."""

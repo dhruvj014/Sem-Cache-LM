@@ -6,6 +6,8 @@ import DecisionDonut from "../components/charts/DecisionDonut.jsx";
 import QualityHistogram from "../components/charts/QualityHistogram.jsx";
 import CacheStressBench from "../components/CacheStressBench.jsx";
 import QualityFeedbackSlice from "../components/QualityFeedbackSlice.jsx";
+import CacheHealthWidget from "../components/CacheHealthWidget.jsx";
+import ExportPanel from "../components/ExportPanel.jsx";
 
 function StatCard({ label, value, hint }) {
   return (
@@ -52,6 +54,11 @@ export default function Analytics() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <CacheStressBench />
         <QualityFeedbackSlice entries={entries} />
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <CacheHealthWidget />
+        <ExportPanel />
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

@@ -3,10 +3,13 @@ from __future__ import annotations
 import asyncio
 from contextlib import asynccontextmanager
 
+import httpx
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator
 
+from services.analytics.app.api.export import router as analytics_export_router
+from services.analytics.app.api.health_score import router as analytics_health_score_router
 from services.analytics.app.api.internal_analytics import (
     router as internal_analytics_router,
 )
@@ -31,6 +34,7 @@ async def lifespan(app: FastAPI):
     await redis_infra.connect()
 
     analytics_service = AnalyticsService(redis_infra)
+    http_client = httpx.AsyncClient()
 
     tasks: list[asyncio.Task] = []
     if settings.analytics_stream_consumer_enabled:
@@ -47,6 +51,7 @@ async def lifespan(app: FastAPI):
 
     app.state.analytics_boundary = analytics_service
     app.state.redis = redis_infra
+    app.state.http_client = http_client
     app.state._bg_tasks = tasks
 
     logger.info("analytics_service.started")
@@ -60,6 +65,7 @@ async def lifespan(app: FastAPI):
                 await t
             except asyncio.CancelledError:
                 pass
+        await http_client.aclose()
         await redis_infra.close()
 
 
@@ -84,6 +90,12 @@ def create_app() -> FastAPI:
     app.add_middleware(InternalAuthMiddleware, token=settings.internal_service_token)
     app.include_router(
         internal_analytics_router, prefix="/internal", tags=["internal-analytics"]
+    )
+    app.include_router(
+        analytics_health_score_router, prefix="/internal", tags=["internal-analytics-health"]
+    )
+    app.include_router(
+        analytics_export_router, prefix="/internal", tags=["internal-analytics-export"]
     )
     Instrumentator().instrument(app).expose(app)
     return app
