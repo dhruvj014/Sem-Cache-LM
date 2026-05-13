@@ -7,7 +7,12 @@ import "./index.css";
 
 const queryClient = new QueryClient({
   defaultOptions: {
-    queries: { refetchOnWindowFocus: false, retry: 1 },
+    queries: {
+      refetchOnWindowFocus: false,
+      retry: 1,
+      // Queries that set refetchInterval keep polling when the tab is in the background.
+      refetchIntervalInBackground: true,
+    },
   },
 });
 

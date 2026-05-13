@@ -1,6 +1,6 @@
-# How This Codebase Works
+# Architecture & query flow
 
-This document explains how SemCacheLM is organized today, what each backend service does, and how a query moves through the system.
+How SemCacheLM is organized: services, shared code, end-to-end query path, configuration, and where to start reading the code.
 
 ## 1) Big Picture
 
@@ -10,6 +10,7 @@ SemCacheLM is built as a **service-oriented backend** plus a React frontend:
 - `backend/services/gateway`: public API facade
 - `backend/services/cache`: semantic cache boundary service
 - `backend/services/rag`: retrieval and catalog service
+- `backend/services/orchestrator`: stream-driven query orchestration
 - `backend/services/analytics`: analytics/event boundary service
 - `backend/services/ai`: embedding + generation boundary service
 - `backend/shared`: shared contracts, models, infrastructure, and observability
@@ -128,7 +129,7 @@ The primary path is `POST /api/v1/query` in `backend/services/gateway/app/api/v1
 
 ## 5) Configuration Model
 
-Central config is in `backend/services/gateway/app/config.py` (`Settings` class). All services currently reuse this settings module.
+Central config lives in `backend/shared/config/settings.py` (`Settings`). The gateway re-exports it from `backend/services/gateway/app/config.py` for convenience.
 
 Key categories:
 
@@ -142,12 +143,12 @@ Key categories:
 
 ## 6) Service Boundaries and Current Coupling
 
-The intended rule in `backend/services/README.md` is:
+Dependency rule for `backend/services/*`:
 
-- allowed: `service -> shared`
-- disallowed: direct imports of another service's internal modules
+- **Allowed:** `service → shared` only.
+- **Disallowed:** importing another service’s internal modules; use HTTP or stream contracts instead.
 
-Current implementation: gateway and orchestrator both consume shared contracts/ports. Query handling uses the **async job API** (`POST /query` → **202** + Redis Streams); the orchestrator stream worker consumes commands and coordinates cache/RAG/AI via Redis streams.
+Gateway and orchestrator consume shared contracts/ports. Query handling uses the **async job API** (`POST /query` → **202** + Redis Streams); the orchestrator stream worker consumes commands and coordinates cache/RAG/AI via Redis streams.
 
 ## 7) Startup and Local Execution
 
@@ -160,9 +161,9 @@ From repository root, services are started individually:
 - `PYTHONPATH=backend uvicorn services.ai.app.main:app --port 8004 --reload`
 - `PYTHONPATH=backend uvicorn services.orchestrator.app.main:app --port 8005 --reload`
 
-## 8) Legacy vs Current Layout
+## 8) Layout Note
 
-The root README describes a cutover from `backend/app` to `backend/services` + `backend/shared`. In this branch, you may still see leftover migration artifacts while service-first paths are the active runtime paths for startup and imports.
+Runtime entrypoints live under `backend/services/<name>/app/main.py` with shared code in `backend/shared/`. Older `backend/app` monolith paths are removed; imports and uvicorn targets should use `services.*` (see root [README.md](../README.md) migration note).
 
 ## 9) If You Are New to the Repo
 

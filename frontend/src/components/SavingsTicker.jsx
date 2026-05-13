@@ -6,9 +6,9 @@ const ILLUSTRATIVE_USD_PER_1K = 0.002;
 
 export default function SavingsTicker() {
   const { data, isFetching } = useQuery({
-    queryKey: ["analytics-summary-ticker"],
+    queryKey: ["summary"],
     queryFn: () => api.summary(),
-    refetchInterval: 2500,
+    refetchInterval: 3000,
   });
 
   const tokens = data?.estimated_tokens_saved ?? 0;

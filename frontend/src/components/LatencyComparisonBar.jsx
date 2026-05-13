@@ -3,7 +3,7 @@ import { api } from "../api/client.js";
 
 export default function LatencyComparisonBar() {
   const { data } = useQuery({
-    queryKey: ["summary-latency"],
+    queryKey: ["summary"],
     queryFn: () => api.summary(),
     refetchInterval: 3000,
   });
