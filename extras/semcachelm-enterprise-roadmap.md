@@ -1,5 +1,7 @@
 # SemCacheLM — Enterprise Readiness Roadmap
 
+> **Note:** The codebase uses **Google Gemini only** for embeddings and generation; local Ollama paths described in older revisions have been removed. Some sections below retain dual-provider wording as historical planning context.
+
 **Course:** CMPE 273 — Enterprise Distributed Systems, SJSU  
 **Scope:** Five-phase plan covering AWS deployment shape, service-to-service security, data replication and consistency, LLM quality/latency improvements, and demo polish. Each phase must be completed (or consciously deferred with a written rationale) before the final presentation.
 
@@ -14,7 +16,7 @@ SemCacheLM is a production-grade semantic caching system built on six FastAPI mi
 | AWS deployment | Single-container stub (`docker-compose.aws.yml`) mismatches the real six-service mesh | ECS Fargate multi-task deployment matching local compose |
 | Service-to-service auth | All `/internal/v1/...` routes are unauthenticated over the wire | Shared bearer-token middleware; secrets via AWS Secrets Manager |
 | Data replication + consistency | Single-node Qdrant, Redis with no replication group, ephemeral repo clone | Documented + partially implemented: Qdrant Cloud or EBS snapshot, ElastiCache replication, EFS or S3 for clone |
-| LLM quality + latency | `llama3.1:8b` via local Ollama; validator prompt sometimes yields wrong judgments; slow p99 | `AI_PROVIDER` env var switches between Ollama (local dev) and Gemini (local cloud test + AWS); same image in all three modes |
+| LLM quality + latency | Gemini defaults; validator prompt may still mis-judge edge cases | Tune prompts/thresholds; optional faster Gemini sku or regional latency tuning |
 
 **Non-goals for CMPE scope:** multi-region active-active, knowledge graph integration, zero-downtime blue/green deploys.
 

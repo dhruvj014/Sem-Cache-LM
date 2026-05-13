@@ -73,10 +73,10 @@ export default function ArchitectureModal({ open, onClose }) {
               </text>
               <rect x="375" y="138" width="120" height="52" rx="10" fill="rgba(167,139,250,0.12)" stroke="rgba(196,181,253,0.45)" />
               <text x="435" y="160" textAnchor="middle" fill="#ddd6fe" fontSize="10" fontFamily="system-ui" fontWeight="600">
-                Ollama
+                LLM API
               </text>
               <text x="435" y="176" textAnchor="middle" fill="#94a3b8" fontSize="9" fontFamily="system-ui">
-                Embed + LLM
+                Google Gemini
               </text>
               <line x1="495" y1="98" x2="555" y2="98" stroke="#64748b" strokeWidth="2" markerEnd="url(#arrow)" />
               <rect x="560" y="70" width="140" height="56" rx="10" fill="rgba(148,163,184,0.1)" stroke="rgba(148,163,184,0.35)" />
@@ -104,8 +104,8 @@ export default function ArchitectureModal({ open, onClose }) {
             <li className="flex gap-2 items-start">
               <Cpu size={16} className="text-violet-300 shrink-0 mt-0.5" />
               <span>
-                <strong className="text-slate-100">Ollama</strong> serves embedding and chat
-                models; the validator reuses the LLM for gray-zone checks.
+                <strong className="text-slate-100">Google Gemini</strong> serves embeddings and chat
+                via the AI and RAG services; the validator reuses the LLM for gray-zone checks.
               </span>
             </li>
             <li className="flex gap-2 items-start">

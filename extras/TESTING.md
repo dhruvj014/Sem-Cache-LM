@@ -4,7 +4,7 @@ This document is a **step-by-step** checklist to run the full stack on your mach
 
 **Recommended order**
 
-1. Prerequisites → 2. Infrastructure (Docker) → 3. Ollama → 4. Backend Python env + config → 5. Automated tests → 6. Run API + manual scenarios → 7. Frontend → 8. UI checklist.
+1. Prerequisites → 2. Infrastructure (Docker) → 3. Gemini API key → 4. Backend Python env + config → 5. Automated tests → 6. Run API + manual scenarios → 7. Frontend → 8. UI checklist.
 
 All paths below assume the **repository root** (the folder that contains `docker-compose.yml`, `backend/`, and `frontend/`).
 
@@ -19,7 +19,7 @@ Install and verify before continuing:
 | **Docker Desktop** | Used for Qdrant + Redis only. |
 | **Python 3.11+** | `python --version` |
 | **Node.js 18+** | `node --version` |
-| **Ollama** | [ollama.com](https://ollama.com) — must be **running on the host** (not in this compose file). Default URL: `http://localhost:11434`. |
+| **Gemini API key** | Set **`GEMINI_API_KEY`** in `backend/.env` or repo-root `.env` (see `backend/.env.example`). AI and RAG call Google’s API over HTTPS. |
 
 Optional but useful:
 
@@ -64,28 +64,11 @@ Expect **`PONG`**.
 
 ---
 
-## 2. Ollama (models + health)
+## 2. Gemini API key
 
-Ollama must be listening on **`http://localhost:11434`** (matches `backend/.env.example`).
+Set **`GEMINI_API_KEY`** in `backend/.env` (and repo-root `.env` when using Docker Compose). Without it, the AI (`8004`) and RAG (`8001`) services cannot embed or generate.
 
-**Step 2.1** — Start the Ollama **service/daemon** the way you usually do on your OS (e.g. Ollama app on Windows/macOS, or `ollama serve` in a dedicated terminal on Linux).
-
-**Step 2.2** — Pull required models (once per machine):
-
-```bash
-ollama pull llama3.1:8b
-ollama pull nomic-embed-text
-```
-
-**Step 2.3** — Confirm Ollama sees them:
-
-```bash
-curl http://localhost:11434/api/tags
-```
-
-(Windows: `curl.exe` if needed.)
-
-Expect **HTTP 200** and JSON listing both model names.
+Optionally confirm outbound HTTPS from your machine (corporate proxies sometimes block Generative Language API hosts).
 
 ---
 
@@ -116,7 +99,7 @@ pip install -r requirements-dev.txt
 - **Windows (PowerShell):** `Copy-Item .env.example .env`
 - **macOS / Linux:** `cp .env.example .env`
 
-Edit `.env` only if your ports or Ollama URL differ from the defaults.
+Edit `.env` only if your ports differ from the defaults.
 
 **Step 3.4** (optional **clean slate** for repeatable manual tests) — To wipe vector + Redis data so Scenario A always starts “cold”:
 
@@ -130,7 +113,7 @@ Then repeat Section 1 checks. **Warning:** this deletes all cached vectors and R
 
 ---
 
-## 4. Automated tests (no Docker / Ollama required for these)
+## 4. Automated tests (no Docker / Gemini API key required for these)
 
 Run from **`backend/`** with the venv **activated**.
 
@@ -204,7 +187,7 @@ curl http://localhost:8000/api/v1/health
 
 On Windows PowerShell you can use `curl.exe` explicitly.
 
-Expect JSON with overall status and per-service flags for **Qdrant**, **Redis**, and **Ollama**. If Ollama is down, health may show **degraded** — fix Section 2 before UI/manual tests that need embeddings or LLM.
+Expect JSON with overall **`status`**, **`services`** (each backend dependency reachable), **`llm_model`**, **`embedding_model`**, and **`qdrant_collection`**. If **`ai_service`** or **`rag_service`** is false, fix **`GEMINI_API_KEY`** and service logs before UI/manual tests that need embeddings or LLM.
 
 ---
 
@@ -386,7 +369,7 @@ Rough expectations on a capable laptop / discrete GPU:
 | -------- | -------- |
 | Repeated identical queries | Cache path much faster than first LLM call |
 | Mixed paraphrases after warm-up | Hit rate depends on text; UI makes the split obvious |
-| Cold `llama3.1:8b` generation | Often **~1s+** — latency bar should contrast sharply with cache |
+| Cold Gemini generation | Often **hundreds of ms to a few seconds** — latency bar should contrast sharply with cache |
 
 ---
 
@@ -395,8 +378,8 @@ Rough expectations on a capable laptop / discrete GPU:
 | Symptom | What to check |
 | ------- | ------------- |
 | `Connection refused` on **6333** / **6379** | `docker compose ps`; rerun Section 1. |
-| Health shows Ollama **false** | Ollama running? Section 2.3. Firewall blocking **11434**? |
-| **500** on `/query` | Backend logs; often missing models (`ollama pull` both names). |
+| Health shows **`ai_service`** or **`rag_service`** **false** | **`GEMINI_API_KEY`** set? Outbound HTTPS OK? Check **`docker compose logs ai`** / **`rag`**. |
+| **500** on `/query` | Backend logs; often missing/invalid Gemini key or quota/rate limits. |
 | Frontend **CORS** errors | `CORS_ORIGINS` in `backend/.env` includes UI origin. |
 | Cache never hits | Different `session_id` is fine for caching — issue is usually empty index or very different wording below similarity threshold. |
 | pytest **not found** | Use `pip install -r requirements-dev.txt` (not `requirements.txt` alone). |
@@ -405,10 +388,10 @@ Rough expectations on a capable laptop / discrete GPU:
 
 ## 12. Test inventory (reference)
 
-| Layer | Command | Needs Docker / Ollama |
+| Layer | Command | Needs Docker / live Gemini |
 | ----- | ------- | ---------------------- |
 | Unit | `pytest tests/unit/ -v` | No |
 | Integration | `pytest tests/integration/ -v` | No |
-| Manual API + UI | Sections 5–9 | Yes (Qdrant, Redis, Ollama, plus npm for UI) |
+| Manual API + UI | Sections 5–9 | Yes (Qdrant, Redis, **`GEMINI_API_KEY`**, plus npm for UI) |
 
 For architecture and endpoint tables, see [README.md](./README.md).

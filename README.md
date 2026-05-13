@@ -23,7 +23,7 @@ React (Vite + Tailwind) ── HTTP ──▶ Gateway (FastAPI) ──▶ Cache/
 - **Backend:** FastAPI · Pydantic v2 · structlog · httpx (async) · qdrant-client · redis-py
 - **Vector DB:** Qdrant (Docker)
 - **Metadata / quality scores / analytics:** Redis (Docker)
-- **LLM + embeddings:** local Ollama (`llama3.1:8b` + `nomic-embed-text`)
+- **LLM + embeddings:** **Google Gemini** (`gemini-2.5-flash-lite` + `gemini-embedding-001` at 768-d via `outputDimensionality`)
 - **Frontend:** React 18 · Vite · Tailwind · shadcn-style UI · Recharts · TanStack Query · Framer Motion
 
 SOLID principles are strictly enforced — services are abstract-base-driven, all
@@ -35,7 +35,7 @@ interface segregation.
 - **Docker Desktop** (Qdrant + Redis)
 - **Python 3.11+** (`python --version`)
 - **Node.js 18+** (`node --version`)
-- **[Ollama](https://ollama.com)** installed and running on the host (default URL `http://localhost:11434`)
+- **Gemini API key** — set `GEMINI_API_KEY` in `.env` (see [`backend/.env.example`](backend/.env.example) and repo-root `.env.example` for Compose)
 
 On Windows PowerShell, use **`curl.exe`** for HTTP checks if `curl` is bound to `Invoke-WebRequest`.
 
@@ -45,12 +45,7 @@ All paths below are relative to the **repository root** (folder containing `dock
 
 ## Run Everything in Docker (recommended)
 
-1. Start Ollama on your host (default URL: `http://localhost:11434`) and pull models once:
-
-```bash
-ollama pull llama3.1:8b
-ollama pull nomic-embed-text
-```
+1. Create or edit `.env` at the repo root (Compose reads it) and set **`GEMINI_API_KEY`**.
 
 2. From the repo root, start the full stack (backend services + frontend + Redis + Qdrant):
 
@@ -97,24 +92,9 @@ docker exec semcachelm-redis redis-cli ping  # expect PONG
 
 If `docker exec` fails, run `docker ps` and use the Redis container name from your compose file.
 
-### 2. Ollama: models and health
+### 2. Gemini API key
 
-Start the Ollama app or daemon on your OS so it listens on **port 11434**.
-
-Pull models once per machine:
-
-```bash
-ollama pull llama3.1:8b
-ollama pull nomic-embed-text
-```
-
-Confirm both appear:
-
-```bash
-curl http://localhost:11434/api/tags
-```
-
-Expect HTTP **200** and JSON listing those model names.
+Add **`GEMINI_API_KEY`** to `backend/.env` (local uvicorn) and/or the repo-root `.env` (Docker Compose). The AI and RAG services call Google’s API over HTTPS; no local LLM daemon is used.
 
 ### 3. Backend: virtualenv and dependencies
 
@@ -149,7 +129,7 @@ Create `backend/.env` from the example:
 | Windows (PowerShell) | `Copy-Item .env.example .env` |
 | macOS / Linux | `cp .env.example .env` |
 
-Edit values only if your ports or Ollama URL differ. For the UI, ensure `CORS_ORIGINS` includes `http://localhost:5173`.
+Edit values only if your ports differ from the defaults. For the UI, ensure `CORS_ORIGINS` includes `http://localhost:5173`.
 
 **Optional — clean slate for repeatable manual demos** (wipes vectors + Redis data for this project):
 
@@ -176,7 +156,7 @@ Or one shot:
 pytest tests/ -v
 ```
 
-These tests use fakes and **do not** require Docker or Ollama. Expect all tests to pass on a healthy tree.
+These tests use fakes and **do not** require Docker or a Gemini key. Expect all tests to pass on a healthy tree.
 
 ### 6. Run the API (manual option)
 
@@ -261,7 +241,7 @@ Prometheus and Grafana start automatically when you run
 |-------|--------------|
 | 1 — Cache Decision Breakdown | Rate of CACHE_HIT / VALIDATE / LLM_FALLBACK over time |
 | 2 — Cache Hit Rate % | Live gauge of cache efficiency |
-| 3 — LLM Latency p50/p99 | Ollama inference vs embedding vs judge latency |
+| 3 — LLM Latency p50/p99 | LLM inference vs embedding vs judge latency |
 | 4 — Similarity Score Distribution | Heatmap of cosine similarity scores |
 | 5 — Cache Size + Evictions | Qdrant entry count + eviction rate |
 | 6 — Redis Stream Lag | Async queue backlog |
@@ -276,10 +256,10 @@ Use the app normally — graphs update automatically every 10 seconds.
 | Metric | What it measures |
 |--------|-----------------|
 | `semcachelm_cache_hits_total` | Queries served directly from cache |
-| `semcachelm_llm_fallback_total` | Queries that called Ollama for inference |
+| `semcachelm_llm_fallback_total` | Queries that required full LLM inference |
 | `semcachelm_validate_hits_total` | Gray-zone queries approved by LLM judge |
 | `semcachelm_validate_misses_total` | Gray-zone queries rejected by LLM judge |
-| `semcachelm_llm_latency_seconds` | Ollama call latency (embed / infer / judge) |
+| `semcachelm_llm_latency_seconds` | LLM provider call latency (embed / infer / judge) |
 | `semcachelm_similarity_score` | Cosine similarity score distribution |
 | `semcachelm_quality_score_observed` | EMA quality score at feedback time |
 | `semcachelm_cache_size_total` | Current entries in Qdrant |
@@ -290,7 +270,7 @@ Use the app normally — graphs update automatically every 10 seconds.
 
 | Failure scenario | System behavior |
 |-----------------|-----------------|
-| Ollama slow or down | Cache hits still served in ~18ms — no LLM needed |
+| LLM provider slow or down | Cache hits still served in ~18ms — no LLM needed |
 | One microservice crashes | Other 5 services keep running independently |
 | Container crashes | Docker restarts it automatically (`restart: unless-stopped`) |
 | Redis restarts | Data persists via `redis_data` volume |
@@ -309,8 +289,7 @@ Use the app normally — graphs update automatically every 10 seconds.
 ## Quick reference (experienced setup)
 
 ```bash
-# Docker (full stack)
-ollama pull llama3.1:8b && ollama pull nomic-embed-text
+# Docker (full stack): ensure repo-root .env has GEMINI_API_KEY set
 docker compose up --build -d
 # UI: http://localhost:5173
 # Grafana:    http://localhost:3000   (admin / admin123)
@@ -381,8 +360,7 @@ The system is AWS-ready out of the box:
 - For managed services, swap:
   - **Qdrant** → Qdrant Cloud or a Qdrant EC2 instance (set `QDRANT_HOST` / `QDRANT_PORT`).
   - **Redis** → AWS ElastiCache (set `REDIS_HOST` / `REDIS_PORT`).
-  - **Ollama** → an EC2 GPU instance or any private Ollama-compatible endpoint
-    (set `OLLAMA_BASE_URL`).
+  - **Gemini** → use Google AI Studio / Vertex AI (set `GEMINI_API_KEY`; optionally tune `GEMINI_LLM_MODEL`, `GEMINI_EMBEDDING_MODEL`, `GEMINI_TIMEOUT_SECONDS`).
 - Health endpoint: `GET /api/v1/health` returns `{ status: "ok", version, services }`,
   suitable for ALB / ECS health checks.
 
@@ -392,7 +370,7 @@ The system is AWS-ready out of the box:
 APP_ENV, APP_VERSION, LOG_LEVEL, CORS_ORIGINS,
 QDRANT_HOST, QDRANT_PORT, QDRANT_COLLECTION, QDRANT_VECTOR_SIZE,
 REDIS_HOST, REDIS_PORT, REDIS_DB,
-OLLAMA_BASE_URL, OLLAMA_LLM_MODEL, OLLAMA_EMBEDDING_MODEL, OLLAMA_TIMEOUT_SECONDS,
+GEMINI_API_KEY, GEMINI_LLM_MODEL, GEMINI_EMBEDDING_MODEL, GEMINI_TIMEOUT_SECONDS,
 SIMILARITY_HIT_THRESHOLD, SIMILARITY_GRAY_ZONE_LOW,
 QUALITY_EMA_ALPHA, QUALITY_EVICTION_THRESHOLD,
 CACHE_SEARCH_TOP_K

@@ -57,8 +57,8 @@ export default function Settings() {
       </div>
 
       <div className="glass rounded-xl p-4 text-sm text-slate-400">
-        Decision thresholds and Ollama model names are configured server-side via the
-        backend <span className="code">.env</span> file.
+        Decision thresholds and Gemini model IDs are configured server-side via the backend{" "}
+        <span className="code">.env</span> file.
       </div>
     </div>
   );
