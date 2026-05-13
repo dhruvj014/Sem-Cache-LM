@@ -63,8 +63,8 @@ async def health(request: Request):
             status=status,
             version=settings.app_version,
             services=services,
-            llm_model=settings.ollama_llm_model,
-            embedding_model=settings.ollama_embedding_model,
+            llm_model=settings.active_llm_model_id,
+            embedding_model=settings.active_embedding_model_id,
             qdrant_collection=settings.qdrant_collection,
         )
     )

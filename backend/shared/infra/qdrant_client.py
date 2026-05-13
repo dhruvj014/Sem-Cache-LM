@@ -10,6 +10,22 @@ from shared.observability.logger import get_logger
 logger = get_logger(__name__)
 
 
+def build_qdrant_kwargs(host: str, port: int, api_key: str = "", https: bool = False) -> dict:
+    """Unifies connection logic for both Sync and Async Qdrant clients."""
+    host = host.strip()
+    kwargs = {}
+    if host.startswith(("http://", "https://")):
+        kwargs["url"] = host
+    else:
+        kwargs["host"] = host
+        kwargs["port"] = port
+
+    if api_key:
+        kwargs["api_key"] = api_key
+        kwargs["https"] = https
+    return kwargs
+
+
 class QdrantInfrastructure:
     """Owns Qdrant connection and collection bootstrap only."""
 
@@ -24,11 +40,14 @@ class QdrantInfrastructure:
         return self._client
 
     async def connect(self) -> None:
-        self._client = AsyncQdrantClient(
+        kwargs = build_qdrant_kwargs(
             host=self._settings.qdrant_host,
             port=self._settings.qdrant_port,
-            prefer_grpc=False,
+            api_key=self._settings.qdrant_api_key,
+            https=self._settings.qdrant_https,
         )
+        kwargs["prefer_grpc"] = False
+        self._client = AsyncQdrantClient(**kwargs)
         await self._ensure_collection()
         logger.info("qdrant.connected", host=self._settings.qdrant_host)
 

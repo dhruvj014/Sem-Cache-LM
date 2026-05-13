@@ -24,7 +24,7 @@ VALIDATE_MISS_TOTAL = Counter(
 # ── Latency histograms ───────────────────────────────────────
 LLM_LATENCY = Histogram(
     "semcachelm_llm_latency_seconds",
-    "Latency of Ollama calls by type",
+    "Latency of upstream LLM/embed provider calls by type",
     labelnames=["call_type"],
     buckets=[0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0],
 )

@@ -97,7 +97,7 @@ Important files:
 The primary path is `POST /api/v1/query` in `backend/services/gateway/app/api/v1/query.py`.
 
 1. Gateway receives `QueryRequest`.
-2. If `QUERY_PIPELINE_ASYNC=true`, gateway writes `QuerySubmittedV1` to Redis Streams and returns `202 + job_id`.
+2. Gateway writes `QuerySubmittedV1` to Redis Streams and returns `202 + job_id`.
 3. Orchestrator stream worker consumes the message and runs the decision pipeline:
    - build search text (optionally including session context),
    - request embedding,
@@ -116,7 +116,6 @@ The primary path is `POST /api/v1/query` in `backend/services/gateway/app/api/v1
 9. Mark query job completed/failed in Redis and publish `QueryCompletedV1`.
 10. Gateway `GET /api/v1/query/{job_id}` reads the job result.
 
-Sync fallback path (`QUERY_PIPELINE_ASYNC=false` + `GATEWAY_SYNC_QUERY_ENABLED=true`): gateway calls orchestrator `/internal/v1/query`, which executes the same `QueryRouterService` in-process on orchestrator.
 
 ## 4) Data and State Ownership
 

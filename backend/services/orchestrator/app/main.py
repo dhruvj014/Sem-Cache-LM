@@ -8,9 +8,6 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator
 
-from services.orchestrator.app.api.internal_orchestrator import (
-    router as internal_orchestrator_router,
-)
 from services.orchestrator.app.domain.agent_decision import AgentDecisionLayer
 from services.orchestrator.app.domain.false_hit_detector import FalseHitDetector
 from services.orchestrator.app.domain.session_context import SessionContextService
@@ -64,17 +61,16 @@ async def lifespan(app: FastAPI):
     )
 
     tasks: list[asyncio.Task] = []
-    if settings.query_pipeline_async:
-        orchestrator = QueryStreamOrchestrator(
-            settings,
-            redis_infra,
-            agent,
-            session_context,
-            false_hit_detector,
-        )
-        tasks.append(
-            asyncio.create_task(orchestrator.run_forever(), name="query-stream-orchestrator")
-        )
+    orchestrator = QueryStreamOrchestrator(
+        settings,
+        redis_infra,
+        agent,
+        session_context,
+        false_hit_detector,
+    )
+    tasks.append(
+        asyncio.create_task(orchestrator.run_forever(), name="query-stream-orchestrator")
+    )
 
     app.state.redis = redis_infra
     app.state.http_client = http_client
@@ -114,9 +110,7 @@ def create_app() -> FastAPI:
     )
     app.add_middleware(CorrelationIdMiddleware)
     app.add_middleware(InternalAuthMiddleware, token=settings.internal_service_token)
-    app.include_router(
-        internal_orchestrator_router, prefix="/internal", tags=["internal-orchestrator"]
-    )
+
     Instrumentator().instrument(app).expose(app)
     return app
 

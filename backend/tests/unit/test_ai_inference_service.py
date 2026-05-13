@@ -65,3 +65,18 @@ async def test_generate_retries_once(settings):
     out = await svc.generate(InternalGenerateRequest(prompt="retry me"))
     assert out.text == "generated text"
     assert llm.calls == 2
+
+
+@pytest.mark.asyncio
+async def test_provider_and_model_reflect_gemini_settings(settings):
+    g = settings.model_copy(
+        update={
+            "gemini_llm_model": "custom-gemini-llm",
+        }
+    )
+    svc = AIInferenceService(g, _FakeEmbedder(), _FakeLLM(), _FakeRedisInfra())
+    emb = await svc.embed(InternalEmbedRequest(text="hello"))
+    gen = await svc.generate(InternalGenerateRequest(prompt="q"))
+    assert emb.provider == "gemini"
+    assert gen.provider == "gemini"
+    assert gen.model == "custom-gemini-llm"

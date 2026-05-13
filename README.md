@@ -217,10 +217,6 @@ Then poll status/result:
 curl.exe http://localhost:8000/api/v1/query/<job_id>
 ```
 
-For synchronous behavior, set `QUERY_PIPELINE_ASYNC=false` and
-`GATEWAY_SYNC_QUERY_ENABLED=true`; gateway forwards the sync query to the
-orchestrator internal API (`/internal/v1/query`).
-
 For full curl scenarios (feedback, eviction, analytics), **PowerShell vs cmd quoting**, and numeric expectations on `data.*`, see **[TESTING.md](./TESTING.md)** (sections on manual API and troubleshooting).
 
 ### 8. Frontend
@@ -405,7 +401,7 @@ CACHE_SEARCH_TOP_K
 Additional commonly tuned vars live in `backend/.env.example`, including:
 
 - service URLs/timeouts (`AI_SERVICE_BASE_URL`, `CACHE_SERVICE_BASE_URL`, `RAG_SERVICE_BASE_URL`, `ANALYTICS_SERVICE_BASE_URL`, `ORCHESTRATOR_SERVICE_BASE_URL`)
-- async pipeline flags (`QUERY_PIPELINE_ASYNC`, `GATEWAY_SYNC_QUERY_ENABLED`, `STREAM_WORKERS_ENABLED`, `STREAM_RECLAIM_MIN_IDLE_MS`)
+- async pipeline flags (`STREAM_WORKERS_ENABLED`, `STREAM_RECLAIM_MIN_IDLE_MS`)
 - RAG split storage (`RAG_QDRANT_*`, `RAG_REDIS_MANIFEST_PREFIX`)
 
 ### Frontend env vars
