@@ -1,11 +1,29 @@
 import asyncio
+
+import httpx
 from fastapi import APIRouter, Request
 
-from services.gateway.app.config import get_settings
+from services.gateway.app.config import Settings, get_settings
 from shared.models.schemas import HealthStatus, ResponseEnvelope
 from shared.stream_topology import MONITORED_STREAM_GROUPS
 
 router = APIRouter()
+
+
+async def orchestrator_service_health(
+    settings: Settings, http: httpx.AsyncClient
+) -> bool:
+    base = (settings.orchestrator_service_base_url or "").rstrip("/")
+    if not base:
+        return False
+    try:
+        resp = await http.get(
+            f"{base}/api/v1/docs",
+            timeout=min(5.0, settings.orchestrator_service_request_timeout_seconds),
+        )
+        return resp.status_code < 500
+    except Exception:
+        return False
 
 
 @router.get("/health/streams")
@@ -46,7 +64,9 @@ async def health(request: Request):
         request.app.state.cache_boundary.health(),
         request.app.state.http_rag_client.health(),
         request.app.state.analytics_boundary.health(),
-        request.app.state.orchestrator_boundary.health(),
+        orchestrator_service_health(
+            request.app.state.settings, request.app.state.http_client
+        ),
     )
 
     services = {

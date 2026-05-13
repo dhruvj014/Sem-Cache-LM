@@ -15,6 +15,20 @@ def test_merge_synthesize_empty_repo_nodes_returns_empty():
     assert out.citations == []
 
 
+def test_merge_synthesize_below_score_floor_skips_llm():
+    lo = MagicMock()
+    lo.score = 0.12
+    lo.node.metadata = {"file_path": "a.py"}
+    lo.node.get_content.return_value = "irrelevant"
+
+    settings = Settings(rag_retrieval_score_floor=0.35)
+    svc = RagService(settings)
+    svc._retrievers = {"r1": object()}
+    out = svc._merge_synthesize_and_cite("who won the 1969 world series?", [("r1", lo)])
+    assert out.response == ""
+    assert out.citations == []
+
+
 @patch("llama_index.core.response_synthesizers.get_response_synthesizer")
 def test_merge_synthesize_calls_llm_once_with_top_k_nodes(mock_get_synth):
     hi = MagicMock()
@@ -42,6 +56,13 @@ def test_merge_synthesize_calls_llm_once_with_top_k_nodes(mock_get_synth):
 
     repo_nodes = [("r1", lo), ("r2", hi), ("r1", mid)]
     out = svc._merge_synthesize_and_cite("question?", repo_nodes)
+
+    mock_get_synth.assert_called_once()
+    call_kw = mock_get_synth.call_args.kwargs
+    assert call_kw.get("response_mode").name == "SIMPLE_SUMMARIZE"
+    tqt = call_kw.get("text_qa_template")
+    assert tqt is not None
+    assert "general knowledge" in tqt.template.lower()
 
     mock_synth.synthesize.assert_called_once()
     args, kwargs = mock_synth.synthesize.call_args

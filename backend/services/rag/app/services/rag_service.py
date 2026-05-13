@@ -308,6 +308,17 @@ class RagService:
         if not repo_nodes:
             return RagResult(response="", citations=[])
 
+        best_score = max(float(pair[1].score or 0.0) for pair in repo_nodes)
+        floor = float(self._settings.rag_retrieval_score_floor)
+        if floor > 0.0 and best_score < floor:
+            logger.info(
+                "rag.retrieval_below_score_floor",
+                best_score=round(best_score, 4),
+                floor=floor,
+                nodes=len(repo_nodes),
+            )
+            return RagResult(response="", citations=[])
+
         sorted_pairs = sorted(
             repo_nodes,
             key=lambda pair: float(pair[1].score or 0.0),
@@ -317,11 +328,29 @@ class RagService:
         chosen = sorted_pairs[:top_k]
         nodes_only = [p[1] for p in chosen]
 
+        from llama_index.core.prompts import PromptTemplate
+        from llama_index.core.prompts.prompt_type import PromptType
         from llama_index.core.response_synthesizers import get_response_synthesizer
         from llama_index.core.response_synthesizers.type import ResponseMode
 
+        tmpl = (self._settings.rag_synthesis_text_qa_template or "").strip()
+        text_qa_template: PromptTemplate | None
+        if "{context_str}" in tmpl and "{query_str}" in tmpl:
+            text_qa_template = PromptTemplate(
+                tmpl,
+                prompt_type=PromptType.QUESTION_ANSWER,
+            )
+        else:
+            logger.warning(
+                "rag.synthesis_template_invalid_missing_placeholders",
+                has_context="{context_str}" in tmpl,
+                has_query="{query_str}" in tmpl,
+            )
+            text_qa_template = None
+
         synthesizer = get_response_synthesizer(
             response_mode=ResponseMode.SIMPLE_SUMMARIZE,
+            text_qa_template=text_qa_template,
         )
         synth_response = synthesizer.synthesize(query, nodes_only)
         answer_text = getattr(synth_response, "response", None)

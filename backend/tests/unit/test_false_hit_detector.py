@@ -1,24 +1,14 @@
 import pytest
 
-from shared.domain.model_providers import LLMClient
 from services.orchestrator.app.domain.false_hit_detector import FalseHitDetector
-
-
-class _FakeLLM(LLMClient):
-    def __init__(self, response: str):
-        self._response = response
-
-    async def generate(self, prompt: str, system: str | None = None) -> str:
-        return self._response
-
-    async def health(self) -> bool:
-        return True
 
 
 @pytest.mark.asyncio
 async def test_validates_yes(settings):
-    llm = _FakeLLM("VERDICT: YES\nCONFIDENCE: 0.91\nREASON: Same topic and intent.")
-    detector = FalseHitDetector(settings, llm)
+    async def gen(prompt: str, system: str | None = None) -> str:
+        return "VERDICT: YES\nCONFIDENCE: 0.91\nREASON: Same topic and intent."
+
+    detector = FalseHitDetector(settings, gen)
     result = await detector.validate("new q", "cached r", 0.81)
     assert result.is_valid is True
     assert result.confidence == pytest.approx(0.91)
@@ -27,30 +17,30 @@ async def test_validates_yes(settings):
 
 @pytest.mark.asyncio
 async def test_validates_no(settings):
-    llm = _FakeLLM("VERDICT: NO\nCONFIDENCE: 0.85\nREASON: Different topic.")
-    detector = FalseHitDetector(settings, llm)
+    async def gen(prompt: str, system: str | None = None) -> str:
+        return "VERDICT: NO\nCONFIDENCE: 0.85\nREASON: Different topic."
+
+    detector = FalseHitDetector(settings, gen)
     result = await detector.validate("new q", "cached r", 0.81)
     assert result.is_valid is False
 
 
 @pytest.mark.asyncio
 async def test_handles_malformed_output(settings):
-    llm = _FakeLLM("nonsense")
-    detector = FalseHitDetector(settings, llm)
+    async def gen(prompt: str, system: str | None = None) -> str:
+        return "nonsense"
+
+    detector = FalseHitDetector(settings, gen)
     result = await detector.validate("q", "r", 0.8)
     assert result.is_valid is False
 
 
 @pytest.mark.asyncio
 async def test_handles_llm_error(settings):
-    class _BrokenLLM(LLMClient):
-        async def generate(self, prompt: str, system: str | None = None) -> str:
-            raise RuntimeError("boom")
+    async def gen(prompt: str, system: str | None = None) -> str:
+        raise RuntimeError("boom")
 
-        async def health(self) -> bool:
-            return False
-
-    detector = FalseHitDetector(settings, _BrokenLLM())
+    detector = FalseHitDetector(settings, gen)
     result = await detector.validate("q", "r", 0.8)
     assert result.is_valid is False
     assert "boom" in result.reason

@@ -13,7 +13,6 @@ from services.gateway.app.api.v1 import (
     query,
 )
 from services.gateway.app.config import get_settings
-from services.gateway.app.clients.orchestrator import HttpOrchestratorClient
 from services.gateway.app.services.feedback_service import FeedbackService
 from shared.clients.http import HttpAIClient, HttpAnalyticsClient, HttpCacheClient, HttpRagClient
 from shared.domain.decision_thresholds import DecisionThresholds
@@ -42,16 +41,15 @@ async def lifespan(app: FastAPI):
     http_cache_client = HttpCacheClient(settings, http_client)
     http_rag_client = HttpRagClient(settings, http_client)
     analytics_client = HttpAnalyticsClient(settings, http_client)
-    orchestrator_client = HttpOrchestratorClient(settings, http_client)
     decision_thresholds = DecisionThresholds(settings)
 
     app.state.settings = settings
     app.state.redis = redis_infra
+    app.state.http_client = http_client
     app.state.http_ai_client = http_ai_client
     app.state.cache_boundary = http_cache_client
     app.state.http_rag_client = http_rag_client
     app.state.analytics_boundary = analytics_client
-    app.state.orchestrator_boundary = orchestrator_client
     app.state.feedback_service = FeedbackService(settings, redis_infra, http_cache_client)
     app.state.decision_thresholds = decision_thresholds
     logger.info("app.started")

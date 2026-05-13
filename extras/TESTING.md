@@ -135,12 +135,9 @@ pytest tests/unit/ -v
 pytest tests/integration/ -v
 ```
 
-`tests/integration/test_query_router.py` drives `QueryRouterService` with **fakes** and checks:
+`tests/unit/test_false_hit_detector.py` covers validator verdicts, malformed LLM output, and LLM errors (async generate callable).
 
-- Cold cache → `LLM_FALLBACK` + store.
-- High similarity → `CACHE_HIT`, no LLM call, hit increment.
-- Gray zone + valid validator → validated cache path.
-- Gray zone + invalid → false-hit fallback to LLM.
+Stream orchestration behavior is implemented in `tests/integration/` via gateway/orchestrator/cache/rag stream contracts where applicable; the former `test_query_router.py` suite was removed when `QueryRouterService` was deleted.
 
 **Step 4.3 — Full test pass (optional one-liner)**
 

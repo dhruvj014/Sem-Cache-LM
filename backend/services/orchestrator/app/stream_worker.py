@@ -64,6 +64,11 @@ from shared.utils.timer import timer
 logger = get_logger(__name__)
 
 
+def _rag_answer_text(result: RagResultV1) -> str:
+    """Stripped RAG answer text, or empty if the service returned only whitespace."""
+    return (result.answer or "").strip()
+
+
 def _prepare_rag_query(query: str) -> str:
     lowered = (query or "").lower()
     broad_markers = (
@@ -92,13 +97,16 @@ class QueryStreamOrchestrator:
         redis_infra: RedisInfrastructure,
         agent: AgentDecisionLayer,
         session_context: SessionContextService,
-        false_hit_detector: FalseHitDetector,
     ):
         self._settings = settings
         self._redis_infra = redis_infra
         self._agent = agent
         self._session = session_context
-        self._validator = false_hit_detector
+        self._current_job_id: str | None = None
+        self._current_correlation_id: str | None = None
+        self._validator = FalseHitDetector(
+            settings, self._validator_stream_generate, redis_infra
+        )
 
     @property
     def _r(self):
@@ -189,7 +197,25 @@ class QueryStreamOrchestrator:
             raise RuntimeError("empty embedding")
         return res.embedding
 
-    async def _generate_plain(self, correlation_id: str, job_id: str, prompt: str) -> str:
+    async def _validator_stream_generate(
+        self, prompt: str, system: str | None = None
+    ) -> str:
+        cid = self._current_correlation_id
+        jid = self._current_job_id
+        if not cid or not jid:
+            raise RuntimeError(
+                "validator LLM generate invoked outside active query job context"
+            )
+        return await self._generate_plain(cid, jid, prompt, system=system)
+
+    async def _generate_plain(
+        self,
+        correlation_id: str,
+        job_id: str,
+        prompt: str,
+        *,
+        system: str | None = None,
+    ) -> str:
         cmd_id = str(uuid.uuid4())
         cmd = AiCommandV1(
             schema_version=SCHEMA_VERSION_V1,
@@ -199,9 +225,17 @@ class QueryStreamOrchestrator:
             producer="orchestrator",
             kind=AiCommandKind.generate,
             text=prompt,
+            system=system,
         )
         res = await self._wait_ai(cmd)
         return res.generated_text or ""
+
+    async def _generate_without_rag_context(
+        self, correlation_id: str, job_id: str, query: str
+    ) -> str:
+        """Plain LLM when RAG returned nothing or was skipped; uses ``llm_no_rag_system_prompt``."""
+        system = (self._settings.llm_no_rag_system_prompt or "").strip() or None
+        return await self._generate_plain(correlation_id, job_id, query, system=system)
 
     async def _cache_search(
         self, correlation_id: str, job_id: str, embedding: List[float], top_k: int
@@ -424,10 +458,13 @@ class QueryStreamOrchestrator:
                         )
                     else:
                         rag_result = await self._rag_answer(correlation_id, job_id, rag_query)
+                        rag_text = _rag_answer_text(rag_result)
                         llm_response = (
-                            rag_result.answer
-                            if rag_result.answer
-                            else await self._generate_plain(correlation_id, job_id, query)
+                            rag_text
+                            if rag_text
+                            else await self._generate_without_rag_context(
+                                correlation_id, job_id, query
+                            )
                         )
                         idx_text = build_index_text_for_vector(query, llm_response, self._settings.cache_index_response_max_chars)
                         idx_emb = await self._embed(correlation_id, job_id, idx_text)
@@ -460,10 +497,13 @@ class QueryStreamOrchestrator:
                         )
                 else:
                     rag_result = await self._rag_answer(correlation_id, job_id, rag_query)
+                    rag_text = _rag_answer_text(rag_result)
                     llm_response = (
-                        rag_result.answer
-                        if rag_result.answer
-                        else await self._generate_plain(correlation_id, job_id, query)
+                        rag_text
+                        if rag_text
+                        else await self._generate_without_rag_context(
+                            correlation_id, job_id, query
+                        )
                     )
                     top_score = hits[0].score if hits else 0.0
                     idx_text = build_index_text_for_vector(query, llm_response, self._settings.cache_index_response_max_chars)
@@ -490,7 +530,7 @@ class QueryStreamOrchestrator:
                         similarity_score=top_score,
                         decision_reason=(
                             f"{decision.reason} Answer generated via RAG synthesis."
-                            if rag_result.answer
+                            if rag_text
                             else decision.reason
                         ),
                         latency_ms=0.0,

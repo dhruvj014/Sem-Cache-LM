@@ -26,17 +26,16 @@ Important files:
 
 - `backend/services/gateway/app/main.py`: FastAPI app startup, dependency wiring, router registration.
 - `backend/services/gateway/app/api/v1/query.py`: submit async jobs and poll job status.
-- `backend/services/gateway/app/clients/http/orchestrator.py`: sync fallback call to orchestrator service.
+- `backend/services/gateway/app/api/v1/health.py`: dependency health checks (orchestrator reached via `GET /api/v1/docs` on `ORCHESTRATOR_SERVICE_BASE_URL`).
 - `backend/services/gateway/app/config.py`: environment-driven settings.
 
 ### Orchestrator Service (`backend/services/orchestrator`)
 
-Role: owns query decision/orchestration logic for both async stream worker and sync internal API.
+Role: owns query decision/orchestration logic for the async Redis stream worker.
 
 Important files:
 
 - `backend/services/orchestrator/app/main.py`
-- `backend/services/orchestrator/app/query_router.py`
 - `backend/services/orchestrator/app/stream_worker.py`
 
 ### Cache Service (`backend/services/cache`)
@@ -148,7 +147,7 @@ The intended rule in `backend/services/README.md` is:
 - allowed: `service -> shared`
 - disallowed: direct imports of another service's internal modules
 
-Current implementation: gateway and orchestrator both consume shared contracts/ports. Query handling defaults to the **async job API** (`POST /query` → **202** + Redis Streams); synchronous `POST /query` is an opt-in fallback routed gateway -> orchestrator HTTP.
+Current implementation: gateway and orchestrator both consume shared contracts/ports. Query handling uses the **async job API** (`POST /query` → **202** + Redis Streams); the orchestrator stream worker consumes commands and coordinates cache/RAG/AI via Redis streams.
 
 ## 7) Startup and Local Execution
 
@@ -171,7 +170,7 @@ Start in this order:
 
 1. `backend/services/gateway/app/main.py` (wiring)
 2. `backend/services/gateway/app/api/v1/query.py` (public query entrypoint)
-3. `backend/services/orchestrator/app/query_router.py` (core behavior)
+3. `backend/services/orchestrator/app/stream_worker.py` (core behavior)
 4. `backend/services/cache/app/api/internal_cache.py` (cache boundary)
 5. `backend/services/rag/app/api/rag_internal.py` (retrieval boundary)
 6. `backend/shared/contracts/internal.py` (service contracts)

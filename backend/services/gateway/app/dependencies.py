@@ -3,14 +3,9 @@
 from fastapi import Request
 
 from services.gateway.app.services.feedback_service import FeedbackService
-from services.gateway.app.clients.orchestrator import HttpOrchestratorClient
 from shared.domain.analytics_ports import AnalyticsClient
 from shared.domain.cache_boundary import CacheBoundary
 from shared.domain.decision_thresholds import DecisionThresholds
-
-def get_orchestrator_boundary(request: Request) -> HttpOrchestratorClient:
-    return request.app.state.orchestrator_boundary
-
 
 def get_cache_boundary(request: Request) -> CacheBoundary:
     return request.app.state.cache_boundary
