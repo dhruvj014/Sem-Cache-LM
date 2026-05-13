@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Download, Eraser, HelpCircle, Send, Sparkles, Trash2 } from "lucide-react";
 import { api } from "../api/client.js";
 import { useSessionStore } from "../store/sessionStore.js";
@@ -16,6 +17,7 @@ import { buildSessionMarkdown, downloadMarkdown } from "../utils/exportSession.j
 import { THRESHOLD_PRESETS } from "../constants/thresholdPresets.js";
 
 export default function Chat() {
+  const queryClient = useQueryClient();
   const {
     sessionId,
     messages,
@@ -99,10 +101,12 @@ export default function Chat() {
     try {
       await api.clearAllCache();
       clearChat();
+      void queryClient.invalidateQueries({ queryKey: ["summary"] });
+      void queryClient.invalidateQueries({ queryKey: ["health"] });
     } catch (e) {
       setError(e.message);
     }
-  }, [clearChat]);
+  }, [clearChat, queryClient]);
 
   const exportSession = useCallback(() => {
     const { sessionId: sid, messages: msgs } = useSessionStore.getState();
@@ -179,6 +183,8 @@ export default function Chat() {
         payload,
         requestMeta: { hitThreshold: snapHit, grayLow: snapGray },
       });
+      void queryClient.invalidateQueries({ queryKey: ["summary"] });
+      void queryClient.invalidateQueries({ queryKey: ["health"] });
     } catch (e) {
       setError(e.message);
       setFlow({ ...flowState, result: "fallback" });

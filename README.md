@@ -1,69 +1,65 @@
 # SemCacheLM
 
-A production-grade, **Quality-Aware Semantic Caching System for LLMs**, built for
-CMPE 273 (Enterprise Distributed Systems) at San José State University.
+**Quality-Aware Semantic Caching for LLMs** — CMPE 273 (Enterprise Distributed Systems), San José State University.
 
-SemCacheLM reduces LLM inference cost and latency by semantically caching prior
-responses and intelligently deciding when to reuse them. It implements all three
-required advanced features:
+SemCacheLM cuts cost and latency by semantically reusing prior answers and choosing when to trust them. It implements the three required advanced features:
 
-1. **Agentic Decision Layer** — dynamically chooses CACHE_HIT, VALIDATE, or LLM_FALLBACK.
-2. **Feedback Loop Learning** — upvote/downvote signals adjust cached entry quality
-   via an exponential moving average; low-quality entries are evicted.
-3. **False Hit Detection** — borderline (gray-zone) matches are validated by a
-   lightweight LLM judge before reuse.
+1. **Agentic decision layer** — `CACHE_HIT`, `VALIDATE`, or `LLM_FALLBACK` per query.  
+2. **Feedback loop** — up/down votes adjust per-entry quality (EMA); low-quality rows can be evicted.  
+3. **False-hit detection** — gray-zone similarity runs a lightweight LLM judge before reuse.
 
 ## Architecture
 
 ```
-React (Vite + Tailwind) ── HTTP ──▶ Gateway (FastAPI) ──▶ Cache/RAG/AI/Analytics services
-                                                   └────▶ Redis Streams orchestration
+React (Vite + Tailwind) ── HTTP ──▶ Gateway (FastAPI) ──▶ Cache / RAG / AI / Analytics (HTTP)
+                                                   └──▶ Redis Streams + Orchestrator worker
 ```
 
-- **Backend:** FastAPI · Pydantic v2 · structlog · httpx (async) · qdrant-client · redis-py
-- **Vector DB:** Qdrant (Docker)
-- **Metadata / quality scores / analytics:** Redis (Docker)
-- **LLM + embeddings:** **Google Gemini** (`gemini-2.5-flash-lite` + `gemini-embedding-001` at 768-d via `outputDimensionality`)
-- **Frontend:** React 18 · Vite · Tailwind · shadcn-style UI · Recharts · TanStack Query · Framer Motion
+- **Backend:** FastAPI · Pydantic v2 · structlog · httpx · qdrant-client · redis-py  
+- **Data:** Qdrant (vectors), Redis (metadata, streams, analytics projector input)  
+- **LLM / embeddings:** Google **Gemini** (defaults in `backend/.env.example`)  
+- **Frontend:** React 18 · Vite · Tailwind · Recharts · TanStack Query  
 
-SOLID principles are strictly enforced — services are abstract-base-driven, all
-dependencies are injected, and `CacheReader` / `CacheWriter` are split for
-interface segregation.
+Cross-service calls use HTTP and stream contracts; shared code lives under `backend/shared/`.
+
+## Documentation
+
+| Doc | Use when you need… |
+| --- | ------------------ |
+| [docs/architecture.md](docs/architecture.md) | Service roles, async query flow, where to read code first |
+| [docs/testing.md](docs/testing.md) | Pytest, curl/PowerShell scenarios, UI checklist, troubleshooting |
+| [docs/operations.md](docs/operations.md) | Grafana/Prometheus, **AWS `VITE_API_URL` + CORS**, embedding cutover |
+| [docs/roadmap.md](docs/roadmap.md) | Stretch goals / enterprise direction |
 
 ## Prerequisites
 
-- **Docker Desktop** (Qdrant + Redis)
-- **Python 3.11+** (`python --version`)
-- **Node.js 18+** (`node --version`)
-- **Gemini API key** — set `GEMINI_API_KEY` in `.env` (see [`backend/.env.example`](backend/.env.example) and repo-root `.env.example` for Compose)
+- Docker (Desktop or Engine)  
+- **Python 3.11+** and **Node 18+** if you run services or the UI outside Docker  
+- **`GEMINI_API_KEY`** in repo-root `.env` (Compose) and/or `backend/.env` (local uvicorn) — see [`.env.example`](.env.example) and [`backend/.env.example`](backend/.env.example)
 
-On Windows PowerShell, use **`curl.exe`** for HTTP checks if `curl` is bound to `Invoke-WebRequest`.
-
-All paths below are relative to the **repository root** (folder containing `docker-compose.yml`, `backend/`, and `frontend/`).
+On Windows PowerShell, prefer **`curl.exe`** for HTTP examples so you do not hit the `Invoke-WebRequest` alias.
 
 ---
 
-## Run Everything in Docker (recommended)
+## Run the full stack (recommended)
 
-1. Create or edit `.env` at the repo root (Compose reads it) and set **`GEMINI_API_KEY`**.
-
-2. From the repo root, start the full stack (backend services + frontend + Redis + Qdrant):
+From the **repository root**:
 
 ```bash
+cp .env.example .env   # then set GEMINI_API_KEY
 docker compose up --build -d
 ```
 
-3. Verify:
+Checks:
 
 ```bash
 curl http://localhost:8000/api/v1/health
 ```
 
-4. Open the UI:
+- **UI:** http://localhost:5173  
+- **API docs:** http://localhost:8000/api/v1/docs  
 
-- http://localhost:5173
-
-To wipe state and rerun from scratch:
+Reset volumes (wipes Qdrant + Redis data for this compose project):
 
 ```bash
 docker compose down -v
@@ -71,99 +67,22 @@ docker compose down -v
 
 ---
 
-## Testing locally (step-by-step)
-
-### 1. Start Qdrant and Redis
-
-From the repo root:
-
-```bash
-docker compose up -d
-```
-
-If your install only has the legacy CLI, use `docker-compose up -d`.
-
-Wait until containers are healthy, then verify:
-
-```bash
-curl http://localhost:6333/healthz          # expect HTTP 200
-docker exec semcachelm-redis redis-cli ping  # expect PONG
-```
-
-If `docker exec` fails, run `docker ps` and use the Redis container name from your compose file.
-
-### 2. Gemini API key
-
-Add **`GEMINI_API_KEY`** to `backend/.env` (local uvicorn) and/or the repo-root `.env` (Docker Compose). The AI and RAG services call Google’s API over HTTPS; no local LLM daemon is used.
-
-### 3. Backend: virtualenv and dependencies
+## Tests (no live Gemini required)
 
 ```bash
 cd backend
-python -m venv venv
-```
-
-Activate the venv:
-
-| Shell | Command |
-| ----- | ------- |
-| Windows (cmd) | `venv\Scripts\activate.bat` |
-| Windows (PowerShell) | `venv\Scripts\Activate.ps1` |
-| macOS / Linux | `source venv/bin/activate` |
-
-Install dependencies. Use **`requirements-dev.txt`** so you get runtime packages **and** pytest:
-
-```bash
+python -m venv venv && source venv/bin/activate   # Windows: venv\Scripts\activate
 pip install -r requirements-dev.txt
-```
-
-(`requirements.txt` alone is enough only to run the API; it does not install pytest.)
-
-### 4. Backend configuration
-
-Create `backend/.env` from the example:
-
-| OS | Command |
-| -- | ------- |
-| Windows (cmd) | `copy .env.example .env` |
-| Windows (PowerShell) | `Copy-Item .env.example .env` |
-| macOS / Linux | `cp .env.example .env` |
-
-Edit values only if your ports differ from the defaults. For the UI, ensure `CORS_ORIGINS` includes `http://localhost:5173`.
-
-**Optional — clean slate for repeatable manual demos** (wipes vectors + Redis data for this project):
-
-```bash
-cd ..
-docker compose down -v
-docker compose up -d
-```
-
-Re-check Section 1, then continue.
-
-### 5. Automated tests
-
-With the venv **activated** and cwd **`backend/`**:
-
-```bash
-pytest tests/unit/ -v
-pytest tests/integration/ -v
-```
-
-Or one shot:
-
-```bash
 pytest tests/ -v
 ```
 
-These tests use fakes and **do not** require Docker or a Gemini key. Expect all tests to pass on a healthy tree.
+Manual API flows, PowerShell quoting, and UI verification: **[docs/testing.md](docs/testing.md)**.
 
-### 6. Run the API (manual option)
+---
 
-Still in **`backend/`** with venv active:
-### 6.1 Run all backend services (microservice mode)
+## Run backends without Docker (optional)
 
-From repo root:
+Bring up **Redis + Qdrant** with Compose (`docker compose up -d`), then from repo root with `PYTHONPATH=backend`:
 
 ```bash
 uvicorn services.gateway.app.main:app --port 8000 --reload
@@ -174,242 +93,77 @@ uvicorn services.ai.app.main:app --port 8004 --reload
 uvicorn services.orchestrator.app.main:app --port 8005 --reload
 ```
 
-Smoke checks:
-
-- **Swagger:** [http://localhost:8000/api/v1/docs](http://localhost:8000/api/v1/docs)
-- **Health:** `curl http://localhost:8000/api/v1/health` — JSON reports gateway dependencies (`redis`, `ai_service`, `cache_service`, `rag_service`, `analytics_service`, `orchestrator_service`); if any are down, status may be **degraded**.
-
-### 7. Manual API checks (optional)
-
-Responses use a wrapper: `success`, `data`, `error`, `timestamp`. Use `session_id` (any non-empty string) on `POST /api/v1/query` for session-aware search.
-
-**PowerShell example** (default async query submit):
-
-```powershell
-curl.exe -X POST http://localhost:8000/api/v1/query `
-  -H "Content-Type: application/json" `
-  -d '{"query": "What is a distributed system?", "session_id": "test-001"}'
-```
-
-Then poll status/result:
-
-```powershell
-curl.exe http://localhost:8000/api/v1/query/<job_id>
-```
-
-For full curl scenarios (feedback, eviction, analytics), **PowerShell vs cmd quoting**, and numeric expectations on `data.*`, see **[TESTING.md](./TESTING.md)** (sections on manual API and troubleshooting).
-
-### 8. Frontend
-
-Open a **second terminal**, repo root → **`frontend/`**:
-
-| OS | Create `.env` from example |
-| -- | -------------------------- |
-| Windows (cmd) | `copy .env.example .env` |
-| Windows (PowerShell) | `Copy-Item .env.example .env` |
-| macOS / Linux | `cp .env.example .env` |
-
-Ensure `VITE_API_URL` is `http://localhost:8000` for local testing.
-
-```bash
-npm install
-npm run dev
-```
-
-Open [http://localhost:5173](http://localhost:5173) while the API from Section 6 is still running.
-
-**Quick UI sanity check:** submit a query, confirm the decision trace / source badge; run the in-app demo sequence if present; if the browser reports CORS errors, fix `CORS_ORIGINS` in `backend/.env`.
+Frontend: `cd frontend && cp .env.example .env && npm install && npm run dev` — set `VITE_API_URL=http://localhost:8000` for this layout. Ensure `CORS_ORIGINS` in `backend/.env` includes `http://localhost:5173`.
 
 ---
 
-## Observability (Prometheus + Grafana)
+## Observability
 
-Prometheus and Grafana start automatically when you run
-`docker compose up --build -d` — no extra setup needed.
+Grafana and Prometheus start with the default Compose file. URLs, login, and troubleshooting: **[docs/operations.md](docs/operations.md)**.  
+Grafana dashboard: `http://localhost:3000/d/semcachelm-main/semcachelm-observability` (after login `admin` / `admin123`).
 
-### URLs
+---
 
-| Service    | URL                                                                 | Login         |
-|------------|---------------------------------------------------------------------|---------------|
-| Grafana    | http://localhost:3000                                               | admin / admin123 |
-| Prometheus | http://localhost:9090                                               | —             |
-| Dashboard  | http://localhost:3000/d/semcachelm-main/semcachelm-observability   | auto-loads    |
+## API (gateway)
 
-### Grafana dashboard — 8 panels
+| Method | Path | Purpose |
+| ------ | ---- | ------- |
+| POST | `/api/v1/query` | Submit query (default **202** + `job_id`, async pipeline) |
+| GET | `/api/v1/query/{job_id}` | Poll job status / result |
+| POST | `/api/v1/feedback/{cache_id}` | `up` / `down` feedback |
+| GET | `/api/v1/cache/entries` | Paginated cache listing |
+| DELETE | `/api/v1/cache/{cache_id}` | Delete one entry |
+| POST | `/api/v1/cache/evict` | Evict by quality threshold |
+| GET | `/api/v1/analytics/summary` | Aggregate stats |
+| GET | `/api/v1/analytics/history` | Recent query log |
+| GET | `/api/v1/health` | Redis + dependency services |
 
-| Panel | What it shows |
-|-------|--------------|
-| 1 — Cache Decision Breakdown | Rate of CACHE_HIT / VALIDATE / LLM_FALLBACK over time |
-| 2 — Cache Hit Rate % | Live gauge of cache efficiency |
-| 3 — LLM Latency p50/p99 | LLM inference vs embedding vs judge latency |
-| 4 — Similarity Score Distribution | Heatmap of cosine similarity scores |
-| 5 — Cache Size + Evictions | Qdrant entry count + eviction rate |
-| 6 — Redis Stream Lag | Async queue backlog |
-| 7 — HTTP Request Rate | Requests/sec per microservice |
-| 8 — HTTP p99 Latency | Slowest 1% of requests per service |
+Envelope: `{ "success", "data", "error", "timestamp" }`.
 
-Panels are empty until queries are sent through the app UI.
-Use the app normally — graphs update automatically every 10 seconds.
+---
 
-### Key metrics tracked
+## Decision thresholds (env)
 
-| Metric | What it measures |
-|--------|-----------------|
-| `semcachelm_cache_hits_total` | Queries served directly from cache |
-| `semcachelm_llm_fallback_total` | Queries that required full LLM inference |
-| `semcachelm_validate_hits_total` | Gray-zone queries approved by LLM judge |
-| `semcachelm_validate_misses_total` | Gray-zone queries rejected by LLM judge |
-| `semcachelm_llm_latency_seconds` | LLM provider call latency (embed / infer / judge) |
-| `semcachelm_similarity_score` | Cosine similarity score distribution |
-| `semcachelm_quality_score_observed` | EMA quality score at feedback time |
-| `semcachelm_cache_size_total` | Current entries in Qdrant |
-| `semcachelm_evictions_total` | Low-quality entries removed |
-| `semcachelm_redis_stream_pending` | Unacknowledged async queue messages |
+| Variable | Default | Role |
+| -------- | ------- | ---- |
+| `SIMILARITY_HIT_THRESHOLD` | `0.92` | At/above → direct cache serve |
+| `SIMILARITY_GRAY_ZONE_LOW` | `0.7` | Below → tend toward LLM / validate |
+| `QUALITY_EMA_ALPHA` | `0.20` | Feedback EMA learning rate |
+| `QUALITY_EVICTION_THRESHOLD` | `0.30` | Evict at or below on demand |
 
-### Fault Tolerance
+More knobs: `backend/.env.example` (rerank weights, stream reclaim, RAG/Qdrant split, service URLs).
 
-| Failure scenario | System behavior |
-|-----------------|-----------------|
-| LLM provider slow or down | Cache hits still served in ~18ms — no LLM needed |
-| One microservice crashes | Other 5 services keep running independently |
-| Container crashes | Docker restarts it automatically (`restart: unless-stopped`) |
-| Redis restarts | Data persists via `redis_data` volume |
-| Qdrant restarts | Vector data persists via `qdrant_data` volume |
-| Gray-zone similarity (0.70–0.92) | LLM judge validates before serving — prevents false hits |
+---
 
-### Troubleshooting observability
+## Frontend highlights
 
-| Problem | Fix |
-|---------|-----|
-| Grafana login fails | Use `admin` / `admin123` (Grafana 10 rejects default `admin/admin`) |
-| Grafana panels show No Data | Send queries through the app UI first to generate metrics |
-| Prometheus targets show DOWN | Run `docker compose ps` — backend services may still be starting |
-| Port 3000 or 9090 in use | `lsof -i :3000` then kill the conflicting process |
+Decision trace per reply, query-flow animation, system monitor + latency bars, demo sequence, cache explorer, analytics page, command palette (**⌘/Ctrl+K**), session export to Markdown.
 
-## Quick reference (experienced setup)
+---
 
-```bash
-# Docker (full stack): ensure repo-root .env has GEMINI_API_KEY set
-docker compose up --build -d
-# UI: http://localhost:5173
-# Grafana:    http://localhost:3000   (admin / admin123)
-# Prometheus: http://localhost:9090
+## AWS
 
-# Manual (microservice mode)
-cd backend && python -m venv venv && . venv/bin/activate  # Windows: venv\Scripts\activate
-pip install -r requirements-dev.txt && cp .env.example .env
-PYTHONPATH=backend uvicorn services.gateway.app.main:app --reload --port 8000
-PYTHONPATH=backend uvicorn services.rag.app.main:app --reload --port 8001
-PYTHONPATH=backend uvicorn services.cache.app.main:app --reload --port 8002
-PYTHONPATH=backend uvicorn services.analytics.app.main:app --reload --port 8003
-PYTHONPATH=backend uvicorn services.ai.app.main:app --reload --port 8004
-PYTHONPATH=backend uvicorn services.orchestrator.app.main:app --reload --port 8005
-# Frontend (other terminal)
-cd frontend && cp .env.example .env && npm install && npm run dev
-```
+Use **`docker-compose.aws.yml`**. All configuration is env-driven; per-service Dockerfiles live under `backend/services/*/Dockerfile`.  
 
-## API Endpoints
+**Critical:** rebuild the frontend image whenever you change **`VITE_API_URL`** — it is compile-time in Vite. Set **`CORS_ORIGINS`** to your real UI origin. Details: **[docs/operations.md](docs/operations.md)**.
 
-| Method | Path                          | Purpose                                |
-| ------ | ----------------------------- | -------------------------------------- |
-| POST   | `/api/v1/query`               | Submit a query (default async: `202` + `job_id`) |
-| GET    | `/api/v1/query/{job_id}`      | Poll async query status/result         |
-| POST   | `/api/v1/feedback/{cache_id}` | Submit `up` / `down` feedback          |
-| GET    | `/api/v1/cache/entries`       | List cache entries (paginated)         |
-| DELETE | `/api/v1/cache/{cache_id}`    | Delete a cache entry                   |
-| POST   | `/api/v1/cache/evict`         | Evict low-quality entries              |
-| GET    | `/api/v1/analytics/summary`   | Aggregate stats                        |
-| GET    | `/api/v1/analytics/history`   | Recent query log                       |
-| GET    | `/api/v1/health`              | Health check (`redis`, `ai_service`, `cache_service`, `rag_service`, `analytics_service`, `orchestrator_service`)  |
+---
 
-All responses use this envelope:
-
-```json
-{ "success": true, "data": ..., "error": null, "timestamp": "..." }
-```
-
-## Decision Thresholds (configurable via `.env`)
-
-| Variable                    | Default | Meaning                                   |
-| --------------------------- | ------- | ----------------------------------------- |
-| `SIMILARITY_HIT_THRESHOLD`  | `0.92`  | At/above this, serve from cache directly  |
-| `SIMILARITY_GRAY_ZONE_LOW`  | `0.7`   | Below this, fall back to the LLM          |
-| `QUALITY_EMA_ALPHA`         | `0.20`  | Feedback EMA learning rate                |
-| `QUALITY_EVICTION_THRESHOLD`| `0.30`  | Quality below this → evict on demand      |
-
-Quality EMA: `new = (1 − α)·old + α·feedback_value` where upvote = 1.0, downvote = 0.0.
-
-## Frontend Highlights
-
-- **Decision Trace Card** under every assistant response.
-- **Query Flow Visualizer** that animates Embed → Search → Agent → (Validate?) → Result.
-- **Live System Monitor** sidebar (cache size, hit rate, last decision, service health).
-- **Live Latency Comparison Bar** (cache avg vs. LLM avg).
-- **🎬 Demo Sequence** button that fires 5 pre-written queries to showcase every badge type.
-- **Cache Explorer** with quality bars, PROMOTED / DEMOTED / LOW QUALITY badges, and on-demand eviction.
-- **Analytics Dashboard** with 4 charts + savings counter + recent query log.
-
-## AWS Deployment Notes
-
-The system is AWS-ready out of the box:
-
-- All configuration is read from environment variables (no hardcoded values).
-- Service images use per-service Dockerfiles under `backend/services/*/Dockerfile` (for example `backend/services/gateway/Dockerfile` exposes port 8000 with a gateway health check).
-- `frontend/Dockerfile` builds with `VITE_API_URL` as a build arg, served by Nginx.
-- `docker-compose.aws.yml` is a single-stack composition for ECS-compatible deployments.
-- For managed services, swap:
-  - **Qdrant** → Qdrant Cloud or a Qdrant EC2 instance (set `QDRANT_HOST` / `QDRANT_PORT`).
-  - **Redis** → AWS ElastiCache (set `REDIS_HOST` / `REDIS_PORT`).
-  - **Gemini** → use Google AI Studio / Vertex AI (set `GEMINI_API_KEY`; optionally tune `GEMINI_LLM_MODEL`, `GEMINI_EMBEDDING_MODEL`, `GEMINI_TIMEOUT_SECONDS`).
-- Health endpoint: `GET /api/v1/health` returns `{ status: "ok", version, services }`,
-  suitable for ALB / ECS health checks.
-
-### Backend env vars
+## Project layout
 
 ```
-APP_ENV, APP_VERSION, LOG_LEVEL, CORS_ORIGINS,
-QDRANT_HOST, QDRANT_PORT, QDRANT_COLLECTION, QDRANT_VECTOR_SIZE,
-REDIS_HOST, REDIS_PORT, REDIS_DB,
-GEMINI_API_KEY, GEMINI_LLM_MODEL, GEMINI_EMBEDDING_MODEL, GEMINI_TIMEOUT_SECONDS,
-SIMILARITY_HIT_THRESHOLD, SIMILARITY_GRAY_ZONE_LOW,
-QUALITY_EMA_ALPHA, QUALITY_EVICTION_THRESHOLD,
-CACHE_SEARCH_TOP_K
+├── backend/
+│   ├── services/     gateway, cache, rag, analytics, ai, orchestrator
+│   ├── shared/       models, contracts, infra, observability
+│   └── tests/        unit + integration
+├── docs/             architecture, testing, operations, roadmap
+├── frontend/         React + Vite
+├── grafana/          datasource + dashboard provisioning
+└── prometheus/       scrape config
 ```
 
-Additional commonly tuned vars live in `backend/.env.example`, including:
+---
 
-- service URLs/timeouts (`AI_SERVICE_BASE_URL`, `CACHE_SERVICE_BASE_URL`, `RAG_SERVICE_BASE_URL`, `ANALYTICS_SERVICE_BASE_URL`, `ORCHESTRATOR_SERVICE_BASE_URL`)
-- async pipeline flags (`STREAM_WORKERS_ENABLED`, `STREAM_RECLAIM_MIN_IDLE_MS`)
-- RAG split storage (`RAG_QDRANT_*`, `RAG_REDIS_MANIFEST_PREFIX`)
+## Migration note
 
-### Frontend env vars
-
-```
-VITE_API_URL
-```
-
-## Project Layout
-
-```
-semcachelm/
-├── backend/                FastAPI + services
-│   ├── services/
-│   │   ├── gateway/app/    Public API service
-│   │   ├── cache/app/      Cache boundary service
-│   │   ├── rag/app/        Retrieval + catalog service
-│   │   ├── analytics/app/  Analytics boundary service
-│   │   ├── ai/app/         AI inference service
-│   │   └── orchestrator/app/ Query orchestration service
-│   ├── shared/             Contracts, models, infra, observability
-│   └── tests/              Unit + integration
-└── frontend/               React + Vite UI
-```
-
-For more scenarios (eviction, analytics, extended troubleshooting), see **[TESTING.md](./TESTING.md)**.
-
-## Migration Notes (Breaking Changes)
-
-- `backend/app` was removed as part of the services/shared cutover.
-- Old startup commands like `uvicorn app.main:app` are no longer valid.
-- Use `services.*` module paths for runtime entrypoints and imports.
-- Tests and scripts should import from `services.gateway.app.*`, `services.orchestrator.app.*`, `services.<service>.app.*`, and `shared.*`.
+The old `backend/app` monolith is removed. Run and import **`services.<name>.app.main`**, not `app.main`. Tests and scripts should use `services.*` and `shared.*` paths with `PYTHONPATH=backend` when running from the repo root.

@@ -1,12 +1,8 @@
-# SemCacheLM — Local run & test guide
+# Testing guide
 
-This document is a **step-by-step** checklist to run the full stack on your machine and validate behavior with automated tests, HTTP API calls, and the web UI.
+Step-by-step: infrastructure, automated tests, manual API scenarios (curl / PowerShell), and UI checks. Paths are from the **repository root** unless noted.
 
-**Recommended order**
-
-1. Prerequisites → 2. Infrastructure (Docker) → 3. Gemini API key → 4. Backend Python env + config → 5. Automated tests → 6. Run API + manual scenarios → 7. Frontend → 8. UI checklist.
-
-All paths below assume the **repository root** (the folder that contains `docker-compose.yml`, `backend/`, and `frontend/`).
+**Recommended order:** Prerequisites → Docker (Qdrant + Redis) → Gemini key → Backend venv + config → pytest → API + manual scenarios → Frontend → UI checklist.
 
 ---
 
@@ -169,6 +165,7 @@ PYTHONPATH=backend uvicorn services.rag.app.main:app --port 8001 --reload
 PYTHONPATH=backend uvicorn services.cache.app.main:app --port 8002 --reload
 PYTHONPATH=backend uvicorn services.analytics.app.main:app --port 8003 --reload
 PYTHONPATH=backend uvicorn services.ai.app.main:app --port 8004 --reload
+PYTHONPATH=backend uvicorn services.orchestrator.app.main:app --port 8005 --reload
 ```
 
 **Step 5.2 — Smoke check**
@@ -391,4 +388,4 @@ Rough expectations on a capable laptop / discrete GPU:
 | Integration | `pytest tests/integration/ -v` | No |
 | Manual API + UI | Sections 5–9 | Yes (Qdrant, Redis, **`GEMINI_API_KEY`**, plus npm for UI) |
 
-For architecture and endpoint tables, see [README.md](./README.md).
+For architecture and endpoint tables, see [README.md](../README.md).
