@@ -25,12 +25,12 @@ docker compose ps
 ```
 
 ### Your URLs
-| Service    | URL                          | Login          |
-|------------|------------------------------|----------------|
-| App UI     | http://localhost:5173        | —              |
-| API docs   | http://localhost:8000/docs   | —              |
-| Grafana    | http://localhost:3000        | admin / admin123 |
-| Prometheus | http://localhost:9090        | —              |
+| Service    | URL                                  | Login          |
+|------------|--------------------------------------|----------------|
+| App UI     | http://localhost:5173                | —              |
+| API docs   | http://localhost:8000/api/v1/docs    | —              |
+| Grafana    | http://localhost:3000                | admin / admin123 |
+| Prometheus | http://localhost:9090                | —              |
 
 ### Grafana dashboard
 Direct link after login:

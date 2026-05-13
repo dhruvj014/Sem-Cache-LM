@@ -29,6 +29,9 @@ async def lifespan(app: FastAPI):
     settings = get_settings()
     logger.info("rag_service.starting", env=settings.app_env, version=settings.app_version)
 
+    if not (settings.gemini_api_key or "").strip():
+        raise RuntimeError("GEMINI_API_KEY is required for the RAG service")
+
     redis_infra = RedisInfrastructure(settings)
     await redis_infra.connect()
 

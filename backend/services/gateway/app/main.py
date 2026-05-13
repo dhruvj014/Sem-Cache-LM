@@ -34,8 +34,7 @@ async def lifespan(app: FastAPI):
     redis_infra = RedisInfrastructure(settings)
     await redis_infra.connect()
 
-    if settings.query_pipeline_async:
-        await ensure_async_pipeline_topology(redis_infra.client, settings)
+    await ensure_async_pipeline_topology(redis_infra.client, settings)
 
     http_client = httpx.AsyncClient()
 

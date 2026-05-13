@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import os
+import socket
 from contextlib import asynccontextmanager
 
 import httpx
@@ -10,10 +12,10 @@ from prometheus_fastapi_instrumentator import Instrumentator
 
 from services.ai.app.api.internal_ai import router as internal_ai_router
 from services.ai.app.services.ai_inference_service import AIInferenceService
-from services.ai.app.services.ollama_embedding import OllamaEmbeddingService
-from services.ai.app.services.ollama_llm import OllamaLLMClient
+from services.ai.app.services.gemini_embedding import GeminiEmbeddingService
+from services.ai.app.services.gemini_llm import GeminiLLMClient
 from services.ai.app.stream_worker import run_ai_stream_worker
-from shared.config.settings import get_settings
+from shared.config.settings import Settings, get_settings
 from shared.infra.internal_auth import InternalAuthMiddleware
 from shared.infra.redis_client import RedisInfrastructure
 from shared.observability.correlation import CorrelationIdMiddleware
@@ -23,17 +25,46 @@ configure_logging()
 logger = get_logger(__name__)
 
 
+def _require_gemini_api_key(settings: Settings) -> None:
+    if not (settings.gemini_api_key or "").strip():
+        raise RuntimeError("GEMINI_API_KEY is required for the AI service")
+
+
+def _require_gemini_dns() -> None:
+    """Fail fast if the container cannot resolve Google's Gemini API host."""
+    host = "generativelanguage.googleapis.com"
+    try:
+        socket.getaddrinfo(host, 443, type=socket.SOCK_STREAM)
+    except OSError as e:
+        raise RuntimeError(
+            f"DNS lookup failed for {host} inside this container. "
+            "Fix Docker DNS (e.g. add `dns: [8.8.8.8, 1.1.1.1]` under the `ai` service in "
+            "docker-compose.yml), VPN/split tunneling, or corporate DNS. "
+            f"Original error: {e}"
+        ) from e
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = get_settings()
     logger.info("ai_service.starting", env=settings.app_env, version=settings.app_version)
+    _require_gemini_api_key(settings)
+    _require_gemini_dns()
+
+    if any(os.environ.get(k) for k in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY")):
+        logger.info(
+            "ai_service.proxy_env_present",
+            http_proxy=bool(os.environ.get("HTTP_PROXY")),
+            https_proxy=bool(os.environ.get("HTTPS_PROXY")),
+            all_proxy=bool(os.environ.get("ALL_PROXY")),
+        )
 
     redis_infra = RedisInfrastructure(settings)
     await redis_infra.connect()
-    http_client = httpx.AsyncClient()
+    http_client = httpx.AsyncClient(trust_env=True)
 
-    provider_embedder = OllamaEmbeddingService(settings, http_client)
-    provider_llm = OllamaLLMClient(settings, http_client)
+    provider_embedder = GeminiEmbeddingService(settings, http_client)
+    provider_llm = GeminiLLMClient(settings, http_client)
     ai_inference_service = AIInferenceService(
         settings=settings,
         provider_embedder=provider_embedder,

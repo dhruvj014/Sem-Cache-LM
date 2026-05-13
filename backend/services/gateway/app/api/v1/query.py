@@ -1,10 +1,8 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 
-from services.gateway.app.dependencies import get_orchestrator_boundary
-from services.gateway.app.clients.orchestrator import HttpOrchestratorClient
 from shared.contracts.streams import SCHEMA_VERSION_V1, QuerySubmittedV1
 from shared.infra.stream_runtime import xadd_model
 from shared.jobs.redis_jobs import decode_job_view, job_create_pending, job_get_all
@@ -25,56 +23,41 @@ router = APIRouter()
 @router.post("/query")
 async def submit_query(
     request: QueryRequest,
-    raw_request: Request,
-    orchestrator: HttpOrchestratorClient = Depends(get_orchestrator_boundary),
+    raw_request: Request
 ):
     settings = raw_request.app.state.settings
     try:
-        if settings.query_pipeline_async:
-            job_id = str(uuid.uuid4())
-            correlation_id = getattr(raw_request.state, "correlation_id", None) or "unknown"
-            redis_infra = raw_request.app.state.redis
-            await job_create_pending(
-                redis_infra.client,
-                job_id=job_id,
-                correlation_id=str(correlation_id),
-                ttl_seconds=settings.query_job_ttl_seconds,
-            )
-            cmd_id = str(uuid.uuid4())
-            evt = QuerySubmittedV1(
-                schema_version=SCHEMA_VERSION_V1,
-                correlation_id=str(correlation_id),
-                job_id=job_id,
-                command_id=cmd_id,
-                producer="gateway",
-                query=request.query,
-                session_id=request.session_id,
-                similarity_hit_threshold=request.similarity_hit_threshold,
-                similarity_gray_zone_low=request.similarity_gray_zone_low,
-            )
-            await xadd_model(redis_infra.client, STREAM_QUERY_COMMANDS_V1, evt)
-            payload = QueryJobAccepted(
-                job_id=job_id,
-                status_url=f"/api/v1/query/{job_id}",
-            )
-            return JSONResponse(
-                status_code=202,
-                content=ResponseEnvelope.ok(payload).model_dump(),
-            )
-
-        if not settings.gateway_sync_query_enabled:
-            raise HTTPException(
-                status_code=503,
-                detail="Synchronous query disabled; enable QUERY_PIPELINE_ASYNC or GATEWAY_SYNC_QUERY_ENABLED.",
-            )
-
-        result = await orchestrator.handle_query(
-            request.query,
-            request.session_id,
+        
+        job_id = str(uuid.uuid4())
+        correlation_id = getattr(raw_request.state, "correlation_id", None) or "unknown"
+        redis_infra = raw_request.app.state.redis
+        await job_create_pending(
+            redis_infra.client,
+            job_id=job_id,
+            correlation_id=str(correlation_id),
+            ttl_seconds=settings.query_job_ttl_seconds,
+        )
+        cmd_id = str(uuid.uuid4())
+        evt = QuerySubmittedV1(
+            schema_version=SCHEMA_VERSION_V1,
+            correlation_id=str(correlation_id),
+            job_id=job_id,
+            command_id=cmd_id,
+            producer="gateway",
+            query=request.query,
+            session_id=request.session_id,
             similarity_hit_threshold=request.similarity_hit_threshold,
             similarity_gray_zone_low=request.similarity_gray_zone_low,
         )
-        return ResponseEnvelope.ok(result)
+        await xadd_model(redis_infra.client, STREAM_QUERY_COMMANDS_V1, evt)
+        payload = QueryJobAccepted(
+            job_id=job_id,
+            status_url=f"/api/v1/query/{job_id}",
+        )
+        return JSONResponse(
+            status_code=202,
+            content=ResponseEnvelope.ok(payload).model_dump(),
+        )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except HTTPException:

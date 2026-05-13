@@ -90,7 +90,6 @@ Edit `.env` if needed:
 - **`CORS_ORIGINS`** — include `http://localhost:5173` for the UI.
 - **`AI_SERVICE_BASE_URL`**, **`CACHE_SERVICE_BASE_URL`**, **`RAG_SERVICE_BASE_URL`**, **`ANALYTICS_SERVICE_BASE_URL`**, **`ORCHESTRATOR_SERVICE_BASE_URL`** — defaults match local ports `8004`, `8002`, `8001`, `8003`, `8005`.
 - **`RAG_QDRANT_*`** — optional separate Qdrant collection for RAG chunks (see `.env.example`).
-- **`QUERY_PIPELINE_ASYNC`** — default **`true`**: **`202`** + `job_id`, then **`GET /api/v1/query/{job_id}`** (UI handles polling). Requires Redis, stream workers on Cache / AI / RAG / Analytics, and the standalone Orchestrator worker. Set **`false`** and **`GATEWAY_SYNC_QUERY_ENABLED=true`** for synchronous `POST /query` routed through orchestrator HTTP.
 - **`STREAM_RECLAIM_MIN_IDLE_MS`** — XAUTOCLAIM recovery for stale pending stream messages (`0` disables).
 - **`GET /api/v1/health/streams`** — XPENDING backlog per monitored stream (gateway ops).
 
@@ -181,16 +180,6 @@ curl.exe http://localhost:8000/api/v1/query/<job_id>
 
 Repeat the same JSON after completion — expect `CACHE` / validated-cache behavior when the semantic hit threshold is met.
 
-### Legacy sync mode (optional)
-
-Set:
-
-- `QUERY_PIPELINE_ASYNC=false`
-- `GATEWAY_SYNC_QUERY_ENABLED=true`
-
-Then `POST /api/v1/query` returns a direct query response payload (HTTP 200).
-
----
 
 ## Reset (clean slate)
 
@@ -209,8 +198,6 @@ This wipes Qdrant volumes and Redis data for this compose stack.
 | -------- | ------- | ------ |
 | `SIMILARITY_HIT_THRESHOLD` | `0.92` | Cosine score above which cache is served directly |
 | `SIMILARITY_GRAY_ZONE_LOW` | `0.7` | Below this score, policy tends toward LLM / validate paths |
-| `QUERY_PIPELINE_ASYNC` | `true` | `true` → async job API + Redis Streams orchestration |
-| `GATEWAY_SYNC_QUERY_ENABLED` | `false` | Allow synchronous `POST /query` via gateway -> orchestrator HTTP |
 | `STREAM_WORKERS_ENABLED` | `true` | Cache / RAG / AI services consume command streams |
 | `ANALYTICS_VIA_STREAM` | `true` | Orchestrator publishes analytics events (async path) |
 | `AI_SERVICE_BASE_URL` | `http://localhost:8004` | Gateway → AI HTTP |

@@ -23,12 +23,36 @@ class RedisInfrastructure:
         return self._client
 
     async def connect(self) -> None:
-        self._client = redis.Redis(
-            host=self._settings.redis_host,
-            port=self._settings.redis_port,
-            db=self._settings.redis_db,
-            decode_responses=True,
-        )
+        host = self._settings.redis_host.strip()
+        port = self._settings.redis_port
+
+        if host.startswith(("redis://", "rediss://")):
+            self._client = redis.Redis.from_url(
+                host,
+                decode_responses=True,
+                socket_timeout=5.0,
+                socket_connect_timeout=5.0,
+            )
+        else:
+            # If host contains a port (e.g. my-redis:6379), strip it to avoid double-ports
+            if ":" in host:
+                host_parts = host.split(":")
+                host = host_parts[0]
+                try:
+                    port = int(host_parts[1])
+                except (ValueError, IndexError):
+                    pass
+
+            self._client = redis.Redis(
+                host=host,
+                port=port,
+                db=self._settings.redis_db,
+                password=self._settings.redis_password or None,
+                ssl=self._settings.redis_ssl,
+                decode_responses=True,
+                socket_timeout=5.0,
+                socket_connect_timeout=5.0,
+            )
         await self._client.ping()
         logger.info("redis.connected", host=self._settings.redis_host)
 

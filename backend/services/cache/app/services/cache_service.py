@@ -1,3 +1,4 @@
+import asyncio
 import uuid
 from datetime import datetime, timezone
 from typing import List, Optional
@@ -52,10 +53,15 @@ class CacheService(CacheReader, CacheWriter):
         quality_keys = [QUALITY_KEY.format(cache_id=cid) for cid in cache_ids]
         hit_count_keys = [HIT_COUNT_KEY.format(cache_id=cid) for cid in cache_ids]
 
-        async with self._redis.client.pipeline(transaction=False) as pipe:
-            await pipe.mget(quality_keys)
-            await pipe.mget(hit_count_keys)
-            quality_raws, hit_count_raws = await pipe.execute()
+        rcli = self._redis.client
+        # Per-key GET (not MGET/pipeline): Redis Cluster rejects multi-key ops
+        # when keys map to different hash slots (CROSSSLOT).
+        quality_tasks = [rcli.get(k) for k in quality_keys]
+        hit_tasks = [rcli.get(k) for k in hit_count_keys]
+        merged = await asyncio.gather(*quality_tasks, *hit_tasks)
+        n = len(cache_ids)
+        quality_raws = list(merged[:n])
+        hit_count_raws = list(merged[n:])
 
         hits: List[CacheHit] = []
         for i, r in enumerate(results):
@@ -189,9 +195,11 @@ class CacheService(CacheReader, CacheWriter):
             collection_name=self._collection,
             points_selector=qmodels.PointIdsList(points=[cache_id]),
         )
-        await self._redis.client.delete(
-            QUALITY_KEY.format(cache_id=cache_id),
-            HIT_COUNT_KEY.format(cache_id=cache_id),
+        qk = QUALITY_KEY.format(cache_id=cache_id)
+        hk = HIT_COUNT_KEY.format(cache_id=cache_id)
+        await asyncio.gather(
+            self._redis.client.delete(qk),
+            self._redis.client.delete(hk),
         )
         await self._redis.client.srem(PROMOTE_FLAG_KEY, cache_id)
         await self._redis.client.srem(DEMOTE_FLAG_KEY, cache_id)

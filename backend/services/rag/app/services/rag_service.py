@@ -13,6 +13,7 @@ from urllib.parse import parse_qs, urlparse, urlsplit
 from urllib.request import Request, urlopen
 
 from shared.config.settings import Settings
+from shared.infra.qdrant_client import build_qdrant_kwargs
 from shared.observability.logger import get_logger
 from services.rag.app.services.rag_qdrant_indexing import (
     collection_point_count,
@@ -39,40 +40,74 @@ class RagResult:
 
 
 class RagService:
-    """RAG service backed by LlamaIndex + Ollama.
+    """RAG service backed by LlamaIndex + Google Gemini (embed + synthesize).
 
-    Vector persistence:
-    - Default: Qdrant (**RAG_QDRANT_***) per-repo collections + Redis manifests under **rag_redis_manifest_prefix**.
-    - Legacy: durable ``rag_index_dir`` docstore (``rag_persist_vectors_in_qdrant=false``).
+    Vector persistence: Qdrant (**RAG_QDRANT_***) per-repo collections + Redis manifests
+    under **rag_redis_manifest_prefix**. Repo clones under ``rag_repo_cache_dir`` remain
+    ephemeral working directories.
 
-    Repo clones under ``rag_repo_cache_dir`` remain ephemeral working directories.
+    Each user query runs retrieval once per corpus (in parallel), merges chunks, then a
+    single LLM synthesis pass.
     """
 
     def __init__(self, settings: Settings):
         self._settings = settings
-        self._query_engines: dict[str, Any] = {}
+        self._retrievers: dict[str, Any] = {}
+
+    def _configure_llama_index_settings(self) -> None:
+        from llama_index.core import Settings as LlamaSettings
+        from llama_index.core.node_parser import SentenceSplitter
+
+        LlamaSettings.node_parser = SentenceSplitter(
+            chunk_size=self._settings.rag_chunk_size,
+            chunk_overlap=self._settings.rag_chunk_overlap,
+        )
+        from google.genai.types import EmbedContentConfig
+        from llama_index.embeddings.google_genai import GoogleGenAIEmbedding
+        from llama_index.llms.google_genai import GoogleGenAI
+
+        vec_dim = int(self._settings.rag_qdrant_vector_size_resolved)
+        cfg = EmbedContentConfig(output_dimensionality=vec_dim)
+        api_key = (self._settings.gemini_api_key or "").strip()
+        if not api_key:
+            raise RuntimeError("GEMINI_API_KEY is required for the RAG service")
+        LlamaSettings.llm = GoogleGenAI(
+            model=self._settings.gemini_llm_model,
+            api_key=api_key,
+        )
+        LlamaSettings.embed_model = GoogleGenAIEmbedding(
+            model_name=self._settings.gemini_embedding_model,
+            api_key=api_key,
+            embedding_config=cfg,
+        )
 
     async def initialize(self) -> None:
         await asyncio.to_thread(self._initialize_sync)
 
     async def answer(self, query: str) -> RagResult:
-        if not self._query_engines:
-            raise RuntimeError("RAG query engine not initialized")
-        return await asyncio.to_thread(self._answer_sync, query)
+        if not self._retrievers:
+            raise RuntimeError("RAG retrievers not initialized")
+        items = list(self._retrievers.items())
+        retrieve_tasks = [
+            asyncio.to_thread(self._retrieve_repo_nodes, repo_key, retriever, query)
+            for repo_key, retriever in items
+        ]
+        nested = await asyncio.gather(*retrieve_tasks)
+        flat: list[tuple[str, Any]] = []
+        for batch in nested:
+            flat.extend(batch)
+        return await asyncio.to_thread(self._merge_synthesize_and_cite, query, flat)
 
     def _initialize_sync(self) -> None:
-        if self._settings.rag_persist_vectors_in_qdrant:
-            try:
-                self._initialize_qdrant_vector_store()
-            except ImportError as e:
-                logger.error(
-                    "rag.qdrant_backend_missing_dependency",
-                    error=str(e),
-                    hint="pip install llama-index-vector-stores-qdrant",
-                )
-                raise
-        else:
-            self._initialize_legacy_local_disk()
+        try:
+            self._initialize_qdrant_vector_store()
+        except ImportError as e:
+            logger.error(
+                "rag.qdrant_backend_missing_dependency",
+                error=str(e),
+                hint="pip install llama-index-vector-stores-qdrant",
+            )
+            raise
 
     def _qdrant_collection_name(self, repo_key: str) -> str:
         base_raw = (self._settings.rag_qdrant_collection or "rag").strip()
@@ -84,35 +119,18 @@ class RagService:
 
     def _initialize_qdrant_vector_store(self) -> None:
         from llama_index.core import (
-            Settings as LlamaSettings,
             SimpleDirectoryReader,
             StorageContext,
             VectorStoreIndex,
         )
-        from llama_index.core.node_parser import SentenceSplitter
-        from llama_index.embeddings.ollama import OllamaEmbedding
-        from llama_index.llms.ollama import Ollama
         from llama_index.vector_stores.qdrant import QdrantVectorStore
         from qdrant_client import QdrantClient
 
         import redis as redis_sync
 
-        repo_paths = self._resolve_repo_paths()
+        self._configure_llama_index_settings()
 
-        LlamaSettings.llm = Ollama(
-            model=self._settings.ollama_llm_model,
-            base_url=self._settings.ollama_base_url,
-            request_timeout=self._settings.ollama_timeout_seconds,
-        )
-        LlamaSettings.embed_model = OllamaEmbedding(
-            model_name=self._settings.ollama_embedding_model,
-            base_url=self._settings.ollama_base_url,
-            ollama_additional_kwargs={"mirostat": 0},
-        )
-        LlamaSettings.node_parser = SentenceSplitter(
-            chunk_size=self._settings.rag_chunk_size,
-            chunk_overlap=self._settings.rag_chunk_overlap,
-        )
+        repo_paths = self._resolve_repo_paths()
 
         exts = [
             e.strip()
@@ -125,19 +143,26 @@ class RagService:
             if p.strip()
         ]
 
-        qc = QdrantClient(
+        q_kwargs = build_qdrant_kwargs(
             host=self._settings.rag_qdrant_host_resolved,
             port=int(self._settings.rag_qdrant_port_resolved),
+            api_key=self._settings.rag_qdrant_api_key_resolved,
+            https=self._settings.rag_qdrant_https_resolved,
         )
+
+        qc = QdrantClient(**q_kwargs)
         rcli = redis_sync.Redis(
             host=self._settings.redis_host,
             port=int(self._settings.redis_port),
             db=int(self._settings.redis_db),
+            password=self._settings.redis_password or None,
+            ssl=self._settings.redis_ssl,
             decode_responses=True,
+            socket_timeout=5.0,
         )
         vec_dim = int(self._settings.rag_qdrant_vector_size_resolved)
 
-        self._query_engines = {}
+        self._retrievers = {}
         for repo_key, repo_path in repo_paths.items():
             if not repo_path.exists() or not repo_path.is_dir():
                 logger.warning(
@@ -153,7 +178,7 @@ class RagService:
                 repo_path,
                 required_exts=exts,
                 exclude_dirs=exclude,
-                embedding_model=self._settings.ollama_embedding_model,
+                embedding_model=self._settings.active_embedding_model_id,
                 chunk_size=self._settings.rag_chunk_size,
                 chunk_overlap=self._settings.rag_chunk_overlap,
             )
@@ -237,7 +262,7 @@ class RagService:
                             "fingerprint": fp,
                             "collection": coll,
                             "repo_key": repo_key,
-                            "embedding_model": self._settings.ollama_embedding_model,
+                            "embedding_model": self._settings.active_embedding_model_id,
                             "chunk_size": self._settings.rag_chunk_size,
                             "chunk_overlap": self._settings.rag_chunk_overlap,
                             "vector_dim": vec_dim,
@@ -251,119 +276,93 @@ class RagService:
                     documents=len(documents),
                 )
 
-            self._query_engines[repo_key] = index.as_query_engine(
+            self._retrievers[repo_key] = index.as_retriever(
                 similarity_top_k=self._settings.rag_top_k
             )
 
-        if not self._query_engines:
+        if not self._retrievers:
             raise RuntimeError("No RAG indexes available after repository scan/build.")
 
-    def _initialize_legacy_local_disk(self) -> None:
-        from llama_index.core import (
-            Settings as LlamaSettings,
-            SimpleDirectoryReader,
-            StorageContext,
-            VectorStoreIndex,
-            load_index_from_storage,
+    def _retrieve_repo_nodes(
+        self, repo_key: str, retriever: Any, query: str
+    ) -> list[tuple[str, Any]]:
+        repo_start = time.perf_counter()
+        nodes = list(retriever.retrieve(query))
+        if nodes:
+            repo_best = max(float(n.score or 0.0) for n in nodes)
+        else:
+            repo_best = 0.0
+        logger.info(
+            "rag.repo_retrieve_timing",
+            repo=repo_key,
+            latency_ms=round((time.perf_counter() - repo_start) * 1000, 2),
+            nodes=len(nodes),
+            repo_best=repo_best,
         )
-        from llama_index.core.node_parser import SentenceSplitter
-        from llama_index.embeddings.ollama import OllamaEmbedding
-        from llama_index.llms.ollama import Ollama
+        return [(repo_key, n) for n in nodes]
 
-        repo_paths = self._resolve_repo_paths()
-        index_dir = Path(self._settings.rag_index_dir).resolve()
-        index_dir.mkdir(parents=True, exist_ok=True)
+    def _merge_synthesize_and_cite(
+        self, query: str, repo_nodes: list[tuple[str, Any]]
+    ) -> RagResult:
+        total_start = time.perf_counter()
+        if not repo_nodes:
+            return RagResult(response="", citations=[])
 
-        LlamaSettings.llm = Ollama(
-            model=self._settings.ollama_llm_model,
-            base_url=self._settings.ollama_base_url,
-            request_timeout=self._settings.ollama_timeout_seconds,
+        sorted_pairs = sorted(
+            repo_nodes,
+            key=lambda pair: float(pair[1].score or 0.0),
+            reverse=True,
         )
-        LlamaSettings.embed_model = OllamaEmbedding(
-            model_name=self._settings.ollama_embedding_model,
-            base_url=self._settings.ollama_base_url,
-            ollama_additional_kwargs={"mirostat": 0},
-        )
-        LlamaSettings.node_parser = SentenceSplitter(
-            chunk_size=self._settings.rag_chunk_size,
-            chunk_overlap=self._settings.rag_chunk_overlap,
-        )
+        top_k = self._settings.rag_top_k
+        chosen = sorted_pairs[:top_k]
+        nodes_only = [p[1] for p in chosen]
 
-        exts = [
-            e.strip()
-            for e in self._settings.rag_required_exts.split(",")
-            if e.strip()
-        ]
-        exclude = [
-            p.strip()
-            for p in self._settings.rag_exclude_dirs.split(",")
-            if p.strip()
-        ]
+        from llama_index.core.response_synthesizers import get_response_synthesizer
+        from llama_index.core.response_synthesizers.type import ResponseMode
 
-        self._query_engines = {}
-        for repo_key, repo_path in repo_paths.items():
-            if not repo_path.exists() or not repo_path.is_dir():
-                logger.warning(
-                    "rag.repo_skipped",
-                    repo=repo_key,
-                    reason="path_missing_or_not_dir",
-                    path=str(repo_path),
+        synthesizer = get_response_synthesizer(
+            response_mode=ResponseMode.SIMPLE_SUMMARIZE,
+        )
+        synth_response = synthesizer.synthesize(query, nodes_only)
+        answer_text = getattr(synth_response, "response", None)
+        if answer_text is None:
+            answer_text = str(synth_response)
+
+        citations: list[RagCitation] = []
+        for repo, node in chosen:
+            metadata = node.node.metadata or {}
+            path = (
+                metadata.get("file_path")
+                or metadata.get("filename")
+                or metadata.get("id")
+                or "unknown"
+            )
+            file_path = self._format_citation_path(repo, str(path))
+            snippet = node.node.get_content()[: self._settings.rag_citation_max_chars]
+            citations.append(
+                RagCitation(
+                    file_path=file_path,
+                    score=float(node.score or 0.0),
+                    snippet=snippet,
                 )
-                continue
-
-            repo_index_dir = index_dir / self._safe_repo_key(repo_key)
-            repo_index_dir.mkdir(parents=True, exist_ok=True)
-            persisted_marker = repo_index_dir / "docstore.json"
-            if persisted_marker.exists():
-                storage = StorageContext.from_defaults(persist_dir=str(repo_index_dir))
-                index = load_index_from_storage(storage)
-                logger.info(
-                    "rag.index_loaded",
-                    repo=repo_key,
-                    persist_dir=str(repo_index_dir),
-                )
-            else:
-                try:
-                    reader = SimpleDirectoryReader(
-                        input_dir=str(repo_path),
-                        recursive=True,
-                        required_exts=exts,
-                        exclude=exclude,
-                        filename_as_id=True,
-                    )
-                    documents = reader.load_data()
-                except ValueError:
-                    logger.warning(
-                        "rag.repo_skipped",
-                        repo=repo_key,
-                        reason="no_files_found_or_reader_init_failed",
-                        path=str(repo_path),
-                    )
-                    continue
-
-                if not documents:
-                    logger.warning(
-                        "rag.repo_skipped",
-                        repo=repo_key,
-                        reason="no_documents_loaded",
-                        path=str(repo_path),
-                    )
-                    continue
-                index = VectorStoreIndex.from_documents(documents, show_progress=True)
-                index.storage_context.persist(persist_dir=str(repo_index_dir))
-                logger.info(
-                    "rag.index_built",
-                    repo=repo_key,
-                    persist_dir=str(repo_index_dir),
-                    documents=len(documents),
-                )
-
-            self._query_engines[repo_key] = index.as_query_engine(
-                similarity_top_k=self._settings.rag_top_k
             )
 
-        if not self._query_engines:
-            raise RuntimeError("No RAG indexes available after repository scan/build.")
+        logger.info(
+            "rag.answer_timing",
+            latency_ms=round((time.perf_counter() - total_start) * 1000, 2),
+            repos=len(self._retrievers),
+            citations=len(citations),
+        )
+        return RagResult(response=str(answer_text), citations=citations)
+
+    def _format_citation_path(self, repo: str, path: str) -> str:
+        if repo == "catalog_docs":
+            if "repo_catalog" in path:
+                return f"catalog:repo:{path}"
+            if "api_catalog" in path:
+                return f"catalog:api:{path}"
+            return f"catalog:{path}"
+        return f"{repo}:{path}"
 
     def _remote_repo_cache_dir_name(self, source: str, parsed) -> str:
         """Directory name under ``rag_repo_cache_dir`` for a single HTTPS git clone."""
@@ -582,74 +581,6 @@ class RagService:
             _ = parse_qs(parsed.query, keep_blank_values=True)
             return url
         return None
-
-    def _answer_sync(self, query: str) -> RagResult:
-        total_start = time.perf_counter()
-        best_response = None
-        best_score = -1.0
-        collected_nodes: list[tuple[str, Any]] = []
-        for repo, engine in self._query_engines.items():
-            repo_start = time.perf_counter()
-            response = engine.query(query)
-            nodes = list(getattr(response, "source_nodes", []) or [])
-            if nodes:
-                repo_best = max(float(n.score or 0.0) for n in nodes)
-            else:
-                repo_best = 0.0
-            if repo_best > best_score:
-                best_score = repo_best
-                best_response = response
-            for n in nodes:
-                collected_nodes.append((repo, n))
-            logger.info(
-                "rag.repo_query_timing",
-                repo=repo,
-                latency_ms=round((time.perf_counter() - repo_start) * 1000, 2),
-                nodes=len(nodes),
-                repo_best=repo_best,
-            )
-
-        response = best_response
-        if response is None:
-            return RagResult(response="", citations=[])
-
-        citations: list[RagCitation] = []
-        for repo, node in sorted(
-            collected_nodes, key=lambda pair: float(pair[1].score or 0.0), reverse=True
-        )[: self._settings.rag_top_k]:
-            metadata = node.node.metadata or {}
-            path = (
-                metadata.get("file_path")
-                or metadata.get("filename")
-                or metadata.get("id")
-                or "unknown"
-            )
-            file_path = str(path)
-            if repo == "catalog_docs":
-                if "repo_catalog" in file_path:
-                    file_path = f"catalog:repo:{file_path}"
-                elif "api_catalog" in file_path:
-                    file_path = f"catalog:api:{file_path}"
-                else:
-                    file_path = f"catalog:{file_path}"
-            else:
-                file_path = f"{repo}:{file_path}"
-            snippet = node.node.get_content()[: self._settings.rag_citation_max_chars]
-            citations.append(
-                RagCitation(
-                    file_path=file_path,
-                    score=float(node.score or 0.0),
-                    snippet=snippet,
-                )
-            )
-
-        logger.info(
-            "rag.answer_timing",
-            latency_ms=round((time.perf_counter() - total_start) * 1000, 2),
-            repos=len(self._query_engines),
-            citations=len(citations),
-        )
-        return RagResult(response=str(response), citations=citations)
 
     def _safe_repo_key(self, value: str) -> str:
         cleaned = re.sub(r"[^a-zA-Z0-9._-]+", "_", value.strip())

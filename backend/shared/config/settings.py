@@ -23,6 +23,14 @@ class Settings(BaseSettings):
     qdrant_port: int = 6333
     qdrant_collection: str = "semcachelm_cache"
     qdrant_vector_size: int = 768
+    qdrant_api_key: str = Field(
+        default="",
+        description="API key for Qdrant Cloud.",
+    )
+    qdrant_https: bool = Field(
+        default=False,
+        description="Use HTTPS for Qdrant Cloud connections.",
+    )
 
     rag_qdrant_host: str = Field(
         default="",
@@ -31,6 +39,14 @@ class Settings(BaseSettings):
     rag_qdrant_port: int = Field(
         default=0,
         description="0 uses qdrant_port.",
+    )
+    rag_qdrant_api_key: str = Field(
+        default="",
+        description="Empty uses qdrant_api_key.",
+    )
+    rag_qdrant_https: bool | None = Field(
+        default=None,
+        description="None uses qdrant_https.",
     )
     rag_qdrant_collection: str = Field(
         default="semcachelm_rag_chunks",
@@ -44,13 +60,6 @@ class Settings(BaseSettings):
         ge=0,
         description="Vector dimension for RAG chunk embeddings in Qdrant; 0 uses qdrant_vector_size.",
     )
-    rag_persist_vectors_in_qdrant: bool = Field(
-        default=True,
-        description=(
-            "Store LlamaIndex vectors in RAG Qdrant + Redis manifests; "
-            "False falls back to durable rag_index_dir (legacy)."
-        ),
-    )
     rag_redis_manifest_prefix: str = Field(
         default="semcache:rag:index:v1",
         description="Redis key prefix for RAG index fingerprints / rebuild bookkeeping.",
@@ -59,6 +68,14 @@ class Settings(BaseSettings):
     redis_host: str = "localhost"
     redis_port: int = 6379
     redis_db: int = 0
+    redis_password: str = Field(
+        default="",
+        description="Redis password (used for AWS ElastiCache AUTH).",
+    )
+    redis_ssl: bool = Field(
+        default=False,
+        description="Use SSL for Redis connection (required for ElastiCache in-transit encryption).",
+    )
 
     # ── Security ──────────────────────────────────────────────────────────────
     internal_service_token: str = Field(
@@ -70,27 +87,24 @@ class Settings(BaseSettings):
         ),
     )
 
-    # ── AI provider ───────────────────────────────────────────────────────────
-    ai_provider: str = Field(
-        default="ollama",
-        description="AI provider: 'ollama' (local) or 'gemini' (cloud). Controls embed + generate.",
-    )
-
-    # Ollama (used when ai_provider=ollama)
-    ollama_base_url: str = "http://localhost:11434"
-    ollama_llm_model: str = "llama3.1:8b"
-    ollama_embedding_model: str = "nomic-embed-text"
-    ollama_timeout_seconds: float = 240.0
-
-    # Gemini (used when ai_provider=gemini)
+    # ── Google Gemini (embed + generate for AI + RAG) ─────────────────────────
     gemini_api_key: str = Field(default="", description="Google Gemini API key.")
     gemini_llm_model: str = Field(
-        default="gemini-2.0-flash",
+        default="gemini-2.5-flash-lite",
         description="Gemini model for generation and judging.",
     )
     gemini_embedding_model: str = Field(
-        default="text-embedding-004",
-        description="Gemini model for embeddings. Must output 768-dim vectors to match Qdrant collection.",
+        default="gemini-embedding-001",
+        description=(
+            "Gemini embedding model id; use outputDimensionality / Matryoshka to match "
+            "qdrant_vector_size (768)."
+        ),
+    )
+    gemini_timeout_seconds: float = Field(
+        default=120.0,
+        ge=5.0,
+        le=600.0,
+        description="HTTP timeout for Gemini REST calls (embed + generate).",
     )
 
     similarity_hit_threshold: float = 0.92
@@ -178,15 +192,14 @@ class Settings(BaseSettings):
             "Course and team orgs often only contain forks; set false to index non-forks only."
         ),
     )
-    rag_index_dir: str = Field(
-        default=".rag_index",
-        description="Persisted LlamaIndex storage directory.",
-    )
     rag_top_k: int = Field(
         default=2,
         ge=1,
         le=20,
-        description="Top-k chunks retrieved by LlamaIndex query engine.",
+        description=(
+            "Per-corpus retrieve depth; chunks are merged across corpora and the top-k "
+            "by score are sent to one LLM synthesis pass."
+        ),
     )
     rag_chunk_size: int = Field(
         default=900,
@@ -279,19 +292,23 @@ class Settings(BaseSettings):
         description="Per-minute request budget for internal AI inference APIs.",
     )
     ai_inference_cost_per_1k_input_tokens_usd: float = Field(
-        default=0.003,
+        default=0.0001,
         ge=0.0,
-        description="Estimated input-token cost for usage/cost logging.",
+        description=(
+            "Estimated input-token cost for usage/cost logging (defaults tuned for Gemini Flash Lite)."
+        ),
     )
     ai_inference_cost_per_1k_output_tokens_usd: float = Field(
-        default=0.015,
+        default=0.0004,
         ge=0.0,
-        description="Estimated output-token cost for usage/cost logging.",
+        description=(
+            "Estimated output-token cost for usage/cost logging (defaults tuned for Gemini Flash Lite)."
+        ),
     )
 
     ai_service_base_url: str = Field(
         default="http://localhost:8004",
-        description="Standalone AI inference service for gateway HTTP calls (no Ollama in gateway).",
+        description="Standalone AI inference service for gateway HTTP calls.",
     )
     ai_service_request_timeout_seconds: float = Field(
         default=240.0,
@@ -311,10 +328,6 @@ class Settings(BaseSettings):
     )
 
     # Async pipeline / Redis Streams
-    query_pipeline_async: bool = Field(
-        default=True,
-        description="POST /query returns 202 + job_id; orchestrator consumes Redis Streams. Env: QUERY_PIPELINE_ASYNC.",
-    )
     query_job_ttl_seconds: int = Field(default=3600, ge=60)
     orchestrator_step_timeout_seconds: float = Field(
         default=360.0,
@@ -352,16 +365,21 @@ class Settings(BaseSettings):
         description="XAUTOCLAIM min idle (ms) for stale pending stream entries; 0 disables reclaim.",
     )
 
-    gateway_sync_query_enabled: bool = Field(
-        default=False,
-        description="Allow synchronous POST /query when QUERY_PIPELINE_ASYNC is false (legacy / tests).",
-    )
-
     cmd_result_ttl_seconds: int = Field(
         default=7200,
         ge=300,
         description="TTL for semcache:cmd_result:{command_id} idempotency keys.",
     )
+
+    @computed_field
+    @property
+    def active_embedding_model_id(self) -> str:
+        return (self.gemini_embedding_model or "").strip() or "gemini-embedding-001"
+
+    @computed_field
+    @property
+    def active_llm_model_id(self) -> str:
+        return (self.gemini_llm_model or "").strip() or "gemini-2.5-flash-lite"
 
     @computed_field
     @property
@@ -377,6 +395,16 @@ class Settings(BaseSettings):
     @property
     def rag_qdrant_vector_size_resolved(self) -> int:
         return self.rag_qdrant_vector_size or self.qdrant_vector_size
+
+    @computed_field
+    @property
+    def rag_qdrant_api_key_resolved(self) -> str:
+        return (self.rag_qdrant_api_key or "").strip() or self.qdrant_api_key
+
+    @computed_field
+    @property
+    def rag_qdrant_https_resolved(self) -> bool:
+        return self.rag_qdrant_https if self.rag_qdrant_https is not None else self.qdrant_https
 
     @field_validator("cors_origins", mode="before")
     @classmethod

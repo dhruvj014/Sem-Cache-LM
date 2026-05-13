@@ -34,6 +34,9 @@ class AIInferenceService:
         self._llm = provider_llm
         self._redis = redis_infra.client
 
+    def _provider_label(self) -> str:
+        return "gemini"
+
     async def embed(self, request: InternalEmbedRequest) -> InternalEmbedResponse:
         await self._enforce_rate_limit("embed")
         start = time.perf_counter()
@@ -43,7 +46,7 @@ class AIInferenceService:
             embedding=embedding,
             vector_size=len(embedding),
             latency_ms=round(latency_ms, 2),
-            provider="ollama",
+            provider=self._provider_label(),
         )
 
     async def generate(self, request: InternalGenerateRequest) -> InternalGenerateResponse:
@@ -68,8 +71,8 @@ class AIInferenceService:
         return InternalGenerateResponse(
             text=text,
             latency_ms=round(latency_ms, 2),
-            provider="ollama",
-            model=self._settings.ollama_llm_model,
+            provider=self._provider_label(),
+            model=self._settings.active_llm_model_id,
             estimated_input_tokens=in_tokens,
             estimated_output_tokens=out_tokens,
             estimated_cost_usd=estimated_cost,
