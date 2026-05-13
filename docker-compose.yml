@@ -1,3 +1,19 @@
+# Redis: REDIS_MODE=inherit|local|aws (see root .env.example). For bundled Redis use
+# REDIS_MODE=local and: docker compose --profile local-infra up
+x-redis-env: &redis_env
+  REDIS_MODE: ${REDIS_MODE:-inherit}
+  REDIS_HOST: ${REDIS_HOST:-redis}
+  REDIS_PORT: ${REDIS_PORT:-6379}
+  REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+  REDIS_SSL: ${REDIS_SSL:-false}
+  REDIS_AWS_HOST: ${REDIS_AWS_HOST:-}
+  REDIS_AWS_PORT: ${REDIS_AWS_PORT:-6379}
+  REDIS_AWS_PASSWORD: ${REDIS_AWS_PASSWORD:-}
+  REDIS_AWS_SSL: ${REDIS_AWS_SSL:-true}
+  REDIS_LOCAL_HOST: ${REDIS_LOCAL_HOST:-redis}
+  REDIS_LOCAL_PORT: ${REDIS_LOCAL_PORT:-6379}
+  REDIS_LOCAL_PASSWORD: ${REDIS_LOCAL_PASSWORD:-}
+
 services:
   gateway:
     build:
@@ -7,6 +23,7 @@ services:
     restart: unless-stopped
     command: ["uvicorn", "services.gateway.app.main:app", "--host", "0.0.0.0", "--port", "8000"]
     environment:
+      <<: *redis_env
       APP_ENV: development
       APP_VERSION: 1.0.0
       LOG_LEVEL: INFO
@@ -15,10 +32,6 @@ services:
       QDRANT_PORT: ${QDRANT_PORT:-6333}
       QDRANT_API_KEY: ${QDRANT_API_KEY:-}
       QDRANT_HTTPS: ${QDRANT_HTTPS:-false}
-      REDIS_HOST: ${REDIS_HOST:-redis}
-      REDIS_PORT: ${REDIS_PORT:-6379}
-      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
-      REDIS_SSL: ${REDIS_SSL:-false}
       AI_SERVICE_BASE_URL: http://ai:8004
       CACHE_SERVICE_BASE_URL: http://cache:8002
       RAG_SERVICE_BASE_URL: http://rag:8001
@@ -27,7 +40,6 @@ services:
       STREAM_WORKERS_ENABLED: "true"
       ANALYTICS_STREAM_CONSUMER_ENABLED: "true"
       ANALYTICS_VIA_STREAM: "true"
-      GATEWAY_SYNC_QUERY_ENABLED: "false"
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-}
       GEMINI_LLM_MODEL: ${GEMINI_LLM_MODEL:-gemini-2.5-flash-lite}
       GEMINI_EMBEDDING_MODEL: ${GEMINI_EMBEDDING_MODEL:-gemini-embedding-001}
@@ -59,6 +71,7 @@ services:
     restart: unless-stopped
     command: ["uvicorn", "services.rag.app.main:app", "--host", "0.0.0.0", "--port", "8001"]
     environment:
+      <<: *redis_env
       APP_ENV: development
       APP_VERSION: 1.0.0
       LOG_LEVEL: INFO
@@ -67,16 +80,13 @@ services:
       QDRANT_PORT: ${QDRANT_PORT:-6333}
       QDRANT_API_KEY: ${QDRANT_API_KEY:-}
       QDRANT_HTTPS: ${QDRANT_HTTPS:-false}
-      REDIS_HOST: ${REDIS_HOST:-redis}
-      REDIS_PORT: ${REDIS_PORT:-6379}
-      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
-      REDIS_SSL: ${REDIS_SSL:-false}
       RAG_REPO_CACHE_DIR: /data/rag_repo_cache
       RAG_CATALOG_DIR: /data/rag_catalog
       RAG_QDRANT_HOST: ${RAG_QDRANT_HOST:-qdrant}
       RAG_QDRANT_PORT: ${RAG_QDRANT_PORT:-6333}
       RAG_QDRANT_API_KEY: ${RAG_QDRANT_API_KEY:-}
       RAG_QDRANT_HTTPS: ${RAG_QDRANT_HTTPS:-false}
+      RAG_RETRIEVAL_SCORE_FLOOR: ${RAG_RETRIEVAL_SCORE_FLOOR:-0.32}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GEMINI_LLM_MODEL: ${GEMINI_LLM_MODEL:-gemini-2.5-flash-lite}
       GEMINI_EMBEDDING_MODEL: ${GEMINI_EMBEDDING_MODEL:-gemini-embedding-001}
@@ -107,6 +117,7 @@ services:
     restart: unless-stopped
     command: ["uvicorn", "services.cache.app.main:app", "--host", "0.0.0.0", "--port", "8002"]
     environment:
+      <<: *redis_env
       APP_ENV: development
       APP_VERSION: 1.0.0
       LOG_LEVEL: INFO
@@ -114,11 +125,7 @@ services:
       QDRANT_HOST: ${QDRANT_HOST:-qdrant}
       QDRANT_PORT: ${QDRANT_PORT:-6333}
       QDRANT_API_KEY: ${QDRANT_API_KEY:-}
-      QDRANT_HTTPS: ${QDRANT_HTTPS:-true}
-      REDIS_HOST: ${REDIS_HOST:-redis}
-      REDIS_PORT: ${REDIS_PORT:-6379}
-      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
-      REDIS_SSL: ${REDIS_SSL:-true}
+      QDRANT_HTTPS: ${QDRANT_HTTPS:-false}
       STREAM_WORKERS_ENABLED: "true"
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-}
     ports:
@@ -141,14 +148,11 @@ services:
     restart: unless-stopped
     command: ["uvicorn", "services.analytics.app.main:app", "--host", "0.0.0.0", "--port", "8003"]
     environment:
+      <<: *redis_env
       APP_ENV: development
       APP_VERSION: 1.0.0
       LOG_LEVEL: INFO
       CORS_ORIGINS: http://localhost:5173,http://localhost:3000
-      REDIS_HOST: ${REDIS_HOST:-redis}
-      REDIS_PORT: ${REDIS_PORT:-6379}
-      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
-      REDIS_SSL: ${REDIS_SSL:-false}
       ANALYTICS_STREAM_CONSUMER_ENABLED: "true"
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-}
     ports:
@@ -168,14 +172,11 @@ services:
     restart: unless-stopped
     command: ["uvicorn", "services.ai.app.main:app", "--host", "0.0.0.0", "--port", "8004"]
     environment:
+      <<: *redis_env
       APP_ENV: development
       APP_VERSION: 1.0.0
       LOG_LEVEL: INFO
       CORS_ORIGINS: http://localhost:5173,http://localhost:3000
-      REDIS_HOST: ${REDIS_HOST:-redis}
-      REDIS_PORT: ${REDIS_PORT:-6379}
-      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
-      REDIS_SSL: ${REDIS_SSL:-false}
       STREAM_WORKERS_ENABLED: "true"
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GEMINI_LLM_MODEL: ${GEMINI_LLM_MODEL:-gemini-2.5-flash-lite}
@@ -203,14 +204,11 @@ services:
     restart: unless-stopped
     command: ["uvicorn", "services.orchestrator.app.main:app", "--host", "0.0.0.0", "--port", "8005"]
     environment:
+      <<: *redis_env
       APP_ENV: development
       APP_VERSION: 1.0.0
       LOG_LEVEL: INFO
       CORS_ORIGINS: http://localhost:5173,http://localhost:3000
-      REDIS_HOST: ${REDIS_HOST:-redis}
-      REDIS_PORT: ${REDIS_PORT:-6379}
-      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
-      REDIS_SSL: ${REDIS_SSL:-false}
       AI_SERVICE_BASE_URL: http://ai:8004
       CACHE_SERVICE_BASE_URL: http://cache:8002
       RAG_SERVICE_BASE_URL: http://rag:8001
@@ -232,7 +230,22 @@ services:
       retries: 6
       start_period: 30s
 
-
+  redis:
+    profiles:
+      - local-infra
+    image: redis:7.2-alpine
+    container_name: semcachelm-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   frontend:
     build:
@@ -295,3 +308,4 @@ services:
 
 volumes:
   rag_data:
+  redis_data:

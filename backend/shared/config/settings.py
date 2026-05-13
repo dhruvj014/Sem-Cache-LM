@@ -1,7 +1,10 @@
+from __future__ import annotations
+
 import json
 from functools import lru_cache
+from typing import Literal
 
-from pydantic import Field, computed_field, field_validator
+from pydantic import Field, computed_field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -65,6 +68,37 @@ class Settings(BaseSettings):
         description="Redis key prefix for RAG index fingerprints / rebuild bookkeeping.",
     )
 
+    redis_mode: Literal["inherit", "local", "aws"] = Field(
+        default="inherit",
+        description=(
+            "inherit: use redis_host / redis_port / redis_ssl / redis_password from env as-is. "
+            "local: Docker-friendly defaults (redis_local_*), TLS off. "
+            "aws: ElastiCache / managed Redis via redis_aws_* (TLS on by default)."
+        ),
+    )
+    redis_aws_host: str = Field(
+        default="",
+        description="Hostname when redis_mode=aws (e.g. *.serverless.*.cache.amazonaws.com).",
+    )
+    redis_aws_port: int = Field(default=6379, ge=1, le=65535)
+    redis_aws_password: str = Field(
+        default="",
+        description="AUTH password/token when redis_mode=aws.",
+    )
+    redis_aws_ssl: bool = Field(
+        default=True,
+        description="TLS for AWS/managed Redis (Serverless ElastiCache expects true).",
+    )
+    redis_local_host: str = Field(
+        default="redis",
+        description="Service hostname when redis_mode=local (Compose service name).",
+    )
+    redis_local_port: int = Field(default=6379, ge=1, le=65535)
+    redis_local_password: str = Field(
+        default="",
+        description="Optional password when redis_mode=local (e.g. local redis with requirepass).",
+    )
+
     redis_host: str = "localhost"
     redis_port: int = 6379
     redis_db: int = 0
@@ -105,6 +139,19 @@ class Settings(BaseSettings):
         ge=5.0,
         le=600.0,
         description="HTTP timeout for Gemini REST calls (embed + generate).",
+    )
+    llm_no_rag_system_prompt: str = Field(
+        default=(
+            "You are answering the user's question without any retrieved repository or "
+            "document passages (RAG was not used or returned nothing relevant). "
+            "Answer from general knowledge: be accurate, concise, and direct. "
+            "Do not invent citations, file paths, or quotes from a codebase you have not seen. "
+            "If the question requires access to their private project or files, say you do not have "
+            "that context and give best-effort general guidance or ask what they can share."
+        ),
+        description=(
+            "System instruction for orchestrator plain-LLM fallbacks when there is no usable RAG context."
+        ),
     )
 
     similarity_hit_threshold: float = 0.92
@@ -193,12 +240,43 @@ class Settings(BaseSettings):
         ),
     )
     rag_top_k: int = Field(
-        default=2,
+        default=4,
         ge=1,
         le=20,
         description=(
             "Per-corpus retrieve depth; chunks are merged across corpora and the top-k "
             "by score are sent to one LLM synthesis pass."
+        ),
+    )
+    rag_retrieval_score_floor: float = Field(
+        default=0.60,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Minimum best chunk retrieval score (cosine-style, higher is better) to run "
+            "RAG synthesis. If all retrieved chunks score below this, RAG returns empty so "
+            "the orchestrator can answer with plain LLM for off-repo or general questions. "
+            "Set to 0 to disable (always synthesize when any chunk is returned)."
+        ),
+    )
+    rag_synthesis_text_qa_template: str = Field(
+        default=(
+            "Context information from the indexed repository is below. It may be incomplete, "
+            "off-topic, or irrelevant to the question.\n"
+            "---------------------\n"
+            "{context_str}\n"
+            "---------------------\n"
+            "Answer the query. When the context clearly supports the answer, ground your "
+            "response in it and stay faithful to it. When the context is unhelpful, unrelated, "
+            "or obviously insufficient, do not force an answer from it—use your general knowledge "
+            "to answer the question as well as you can. Do not invent file paths, line numbers, "
+            "or quotations that are not present in the context.\n"
+            "Query: {query_str}\n"
+            "Answer: "
+        ),
+        description=(
+            "LlamaIndex SIMPLE_SUMMARIZE QA prompt. Must contain {context_str} and {query_str} "
+            "(see LlamaIndex SimpleSummarize)."
         ),
     )
     rag_chunk_size: int = Field(
@@ -405,6 +483,37 @@ class Settings(BaseSettings):
     @property
     def rag_qdrant_https_resolved(self) -> bool:
         return self.rag_qdrant_https if self.rag_qdrant_https is not None else self.qdrant_https
+
+    @field_validator("redis_mode", mode="before")
+    @classmethod
+    def _normalize_redis_mode(cls, v):
+        if v is None:
+            return "inherit"
+        s = str(v).strip().lower()
+        if s not in ("inherit", "local", "aws"):
+            raise ValueError("REDIS_MODE must be one of: inherit, local, aws")
+        return s
+
+    @model_validator(mode="after")
+    def _apply_redis_mode(self):
+        if self.redis_mode == "inherit":
+            return self
+        if self.redis_mode == "local":
+            host = (self.redis_local_host or "redis").strip() or "redis"
+            self.redis_host = host
+            self.redis_port = self.redis_local_port
+            self.redis_password = self.redis_local_password or ""
+            self.redis_ssl = False
+            return self
+        aws_host = (self.redis_aws_host or "").strip()
+        if not aws_host:
+            msg = "REDIS_MODE=aws requires REDIS_AWS_HOST"
+            raise ValueError(msg)
+        self.redis_host = aws_host
+        self.redis_port = self.redis_aws_port
+        self.redis_password = self.redis_aws_password or ""
+        self.redis_ssl = self.redis_aws_ssl
+        return self
 
     @field_validator("cors_origins", mode="before")
     @classmethod

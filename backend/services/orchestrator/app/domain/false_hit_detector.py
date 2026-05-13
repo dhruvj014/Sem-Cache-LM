@@ -1,8 +1,8 @@
 import hashlib
 import re
+from collections.abc import Awaitable, Callable
 
 from shared.config.settings import Settings
-from shared.domain.model_providers import LLMClient
 from shared.infra.redis_client import RedisInfrastructure
 from shared.models.schemas import ValidationResult
 from shared.observability.logger import get_logger
@@ -25,16 +25,18 @@ VALIDATION_SYSTEM_PROMPT = (
 
 VALIDATOR_CACHE_PREFIX = "semcache:validator:v1"
 
+GenerateFn = Callable[[str, str | None], Awaitable[str]]
+
 
 class FalseHitDetector:
     def __init__(
         self,
         settings: Settings,
-        llm: LLMClient,
+        generate: GenerateFn,
         redis_infra: RedisInfrastructure | None = None,
     ):
         self._settings = settings
-        self._llm = llm
+        self._generate = generate
         self._redis = redis_infra.client if redis_infra is not None else None
 
     def _validator_cache_key(
@@ -81,7 +83,7 @@ class FalseHitDetector:
             "(YES if the facts there are sufficient and correct; NO if not.)"
         )
         try:
-            raw_llm = await self._llm.generate(prompt=prompt, system=VALIDATION_SYSTEM_PROMPT)
+            raw_llm = await self._generate(prompt, VALIDATION_SYSTEM_PROMPT)
         except Exception as e:  # noqa: BLE001
             logger.warning("false_hit.llm_error", error=str(e))
             return ValidationResult(

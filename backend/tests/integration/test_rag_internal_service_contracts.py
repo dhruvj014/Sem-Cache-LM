@@ -13,9 +13,9 @@ class _FakeRag:
             response=f"answer:{query}",
             citations=[
                 RagCitation(
-                    file_path="repo:backend/app/services/query_router.py",
+                    file_path="repo:backend/services/orchestrator/app/stream_worker.py",
                     score=0.88,
-                    snippet="class QueryRouterService: ...",
+                    snippet="class QueryStreamOrchestrator: ...",
                 )
             ],
         )
@@ -36,6 +36,6 @@ def test_rag_internal_retrieve_returns_answer_and_citations():
     assert body["success"] is True
     assert body["data"]["answer"] == "answer:what APIs exist?"
     assert len(body["data"]["citations"]) == 1
-    assert body["data"]["citations"][0]["file_path"].endswith("query_router.py")
+    assert body["data"]["citations"][0]["file_path"].endswith("stream_worker.py")
     assert body["data"]["citations"][0]["score"] == 0.88
 

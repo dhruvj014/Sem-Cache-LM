@@ -1,5 +1,3 @@
-from services.gateway.app.clients.orchestrator import HttpOrchestratorClient
+"""Gateway-local HTTP clients (orchestrator client removed; use shared.clients.http)."""
 
-__all__ = [
-    "HttpOrchestratorClient",
-]
+__all__: list[str] = []

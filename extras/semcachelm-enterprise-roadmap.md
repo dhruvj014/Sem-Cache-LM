@@ -256,7 +256,7 @@ For grader/demo multi-user access, add an optional `x-api-key` header check on p
 
 ### CAP summary
 
-SemCacheLM makes a deliberate **availability over consistency** choice: if the cache Qdrant node is unreachable, queries still get answered by RAG/LLM (the `cache.search_degraded` warning path in `query_router.py`). The cache is a performance optimization, not a required dependency. Document this explicitly in the architecture section.
+SemCacheLM makes a deliberate **availability over consistency** choice: if the cache Qdrant node is unreachable, queries still get answered by RAG/LLM (the `cache.search_degraded` warning path in `stream_worker.py`). The cache is a performance optimization, not a required dependency. Document this explicitly in the architecture section.
 
 ### Implementation checklist
 
