@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { Check, ChevronDown, ChevronUp, Copy } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, Copy, RotateCcw } from "lucide-react";
 import { useState } from "react";
 import DecisionTraceCard from "./DecisionTraceCard.jsx";
 import SourceBadge from "./SourceBadge.jsx";
@@ -10,7 +10,7 @@ function assistantBodyIsLong(text) {
   return text.split("\n").length > 2 || text.length > 220;
 }
 
-export default function ResponseCard({ message }) {
+export default function ResponseCard({ message, onRegenerate, busy }) {
   const toggleBody = useSessionStore((s) => s.toggleMessageBodyCollapsed);
   const [showAllCitations, setShowAllCitations] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -87,6 +87,18 @@ export default function ResponseCard({ message }) {
                 <ChevronUp size={14} /> Collapse answer
               </>
             )}
+          </button>
+        )}
+        {onRegenerate && (
+          <button
+            type="button"
+            onClick={onRegenerate}
+            disabled={busy}
+            className="mt-2 ml-3 inline-flex items-center gap-1 text-[11px] font-medium text-slate-400 hover:text-emerald-300 disabled:opacity-50"
+            title="Regenerate response"
+          >
+            <RotateCcw size={13} />
+            Regenerate
           </button>
         )}
         {payload && (
