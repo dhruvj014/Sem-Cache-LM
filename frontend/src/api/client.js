@@ -94,6 +94,11 @@ export const api = {
     request(`/cache/entries?page=${page}&page_size=${pageSize}`),
   deleteCache: (id) => request(`/cache/${id}`, { method: "DELETE" }),
   evict: () => request("/cache/evict", { method: "POST" }),
+  invalidateCache: (body) =>
+    request("/cache/invalidate", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
   summary: () => request("/analytics/summary"),
   history: (limit = 20) => request(`/analytics/history?limit=${limit}`),
   health: () => request("/health"),

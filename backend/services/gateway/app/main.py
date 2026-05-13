@@ -7,6 +7,7 @@ from prometheus_fastapi_instrumentator import Instrumentator
 from services.gateway.app.api.v1 import (
     analytics,
     cache,
+    cache_invalidate,
     decision_thresholds_api,
     feedback,
     health,
@@ -86,6 +87,7 @@ def create_app() -> FastAPI:
     app.include_router(query.router, prefix=prefix, tags=["query"])
     app.include_router(feedback.router, prefix=prefix, tags=["feedback"])
     app.include_router(cache.router, prefix=prefix, tags=["cache"])
+    app.include_router(cache_invalidate.router, prefix=prefix, tags=["cache-invalidate"])
     app.include_router(analytics.router, prefix=prefix, tags=["analytics"])
     app.include_router(decision_thresholds_api.router, prefix=prefix, tags=["config"])
 

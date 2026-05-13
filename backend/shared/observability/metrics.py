@@ -71,6 +71,11 @@ STREAM_PENDING = Gauge(
     "Unacknowledged messages in Redis Streams queue",
 )
 
+INVALIDATIONS_TOTAL = Counter(
+    "semcachelm_invalidations_total",
+    "Semantic cache entries removed by RAG-linked invalidation",
+)
+
 
 def record_query_response_metrics(response_payload: QueryResponse) -> None:
     """Record decision and similarity metrics after a query outcome is resolved."""

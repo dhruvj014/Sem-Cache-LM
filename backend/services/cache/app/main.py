@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator
 
 from services.cache.app.api.internal_cache import router as internal_cache_router
+from services.cache.app.api.invalidation import router as cache_invalidation_router
 from services.cache.app.services.cache_service import CacheService
 from services.cache.app.stream_worker import run_cache_stream_worker
 from shared.config.settings import get_settings
@@ -87,6 +88,7 @@ def create_app() -> FastAPI:
     app.add_middleware(CorrelationIdMiddleware)
     app.add_middleware(InternalAuthMiddleware, token=settings.internal_service_token)
     app.include_router(internal_cache_router, prefix="/internal", tags=["internal-cache"])
+    app.include_router(cache_invalidation_router, prefix="/internal", tags=["internal-cache-invalidate"])
     Instrumentator().instrument(app).expose(app)
     return app
 
