@@ -5,15 +5,16 @@
 #
 # For local testing of the AWS code path, copy this file's env-var pattern into your local `.env`.
 #
-# Redis: defaults target AWS ElastiCache (Serverless or node). Set REDIS_AWS_HOST (and
-# password if required) in `.env`. Containers must run in a VPC/subnets that can reach
-# the cache security group. Optional local Redis: `docker compose --profile bundled-redis …`
+# Redis: defaults to the in-compose `redis` service (REDIS_MODE=local). Good for single-EC2
+# Docker: one network, no SG/TLS to ElastiCache. For managed Redis instead, set in `.env`:
+#   REDIS_MODE=aws
+#   REDIS_AWS_HOST=…  (and password/SSL as needed); the local `redis` container is unused but harmless.
 #
 # Qdrant: set QDRANT_* and RAG_QDRANT_* in `.env` to Qdrant Cloud (HTTPS + API key). No local
 # container is started unless you use: docker compose --profile bundled-qdrant …
 
 x-redis-env: &redis_env
-  REDIS_MODE: ${REDIS_MODE:-aws}
+  REDIS_MODE: ${REDIS_MODE:-local}
   REDIS_HOST: ${REDIS_HOST:-}
   REDIS_PORT: ${REDIS_PORT:-6379}
   REDIS_PASSWORD: ${REDIS_PASSWORD:-}
@@ -60,6 +61,8 @@ services:
     ports:
       - "8000:8000"
     depends_on:
+      redis:
+        condition: service_healthy
       ai:
         condition: service_started
       cache:
@@ -118,6 +121,8 @@ services:
     ports:
       - "8001:8001"
     depends_on:
+      redis:
+        condition: service_healthy
       ai:
         condition: service_started
     healthcheck:
@@ -150,6 +155,8 @@ services:
     ports:
       - "8002:8002"
     depends_on:
+      redis:
+        condition: service_healthy
       ai:
         condition: service_started
     healthcheck:
@@ -177,6 +184,9 @@ services:
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN}
     ports:
       - "8003:8003"
+    depends_on:
+      redis:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8003/metrics > /dev/null || exit 1"]
       interval: 30s
@@ -209,6 +219,9 @@ services:
       NO_PROXY: ${NO_PROXY:-}
     ports:
       - "8004:8004"
+    depends_on:
+      redis:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8004/metrics > /dev/null || exit 1"]
       interval: 30s
@@ -239,6 +252,8 @@ services:
     ports:
       - "8005:8005"
     depends_on:
+      redis:
+        condition: service_healthy
       ai:
         condition: service_started
       cache:
@@ -270,8 +285,6 @@ services:
       retries: 5
 
   redis:
-    profiles:
-      - bundled-redis
     image: redis:7.2-alpine
     container_name: semcachelm-redis
     restart: unless-stopped
