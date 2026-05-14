@@ -234,3 +234,10 @@ Open the **Cache Explorer** tab in the UI. In the **RAG-linked invalidation** pa
 - **Source documents changed** — e.g. README or docs were updated and old cached answers should not be served.  
 - **Codebase changed** — RAG re-ingestion or chunk drift makes old chunk vectors or citations obsolete.  
 - **Cached answers need a refresh** — you want to drop entries tied to a specific path or id before new queries repopulate the cache.
+
+
+Link to demo: http://18.119.159.37:5173/
+
+Link to grafana: http://18.119.159.37:3000/d/semcachelm-main/semcachelm-observability?orgId=1&refresh=10s
+
+Link to demo video: https://drive.google.com/file/d/1hYclw2fXXgLtZhXD2dNkP0pMVMib98us/view?usp=drive_link
