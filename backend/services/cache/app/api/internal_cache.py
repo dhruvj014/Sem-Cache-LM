@@ -20,7 +20,12 @@ router = APIRouter()
 @router.post("/v1/cache/search")
 async def internal_cache_search(request: InternalCacheSearchRequest, app_request: Request):
     cache = app_request.app.state.cache_boundary
-    hits = await cache.search(request.embedding, top_k=request.top_k)
+    hits = await cache.search(
+        request.embedding,
+        top_k=request.top_k,
+        sparse_indices=request.sparse_indices or None,
+        sparse_values=request.sparse_values or None,
+    )
     return ResponseEnvelope.ok(
         InternalCacheSearchResponse(hits=[h.model_dump() for h in hits])
     )
@@ -34,6 +39,8 @@ async def internal_cache_store(request: InternalCacheStoreRequest, app_request: 
         embedding=request.embedding,
         response=request.response,
         metadata=request.metadata,
+        sparse_indices=request.sparse_indices or None,
+        sparse_values=request.sparse_values or None,
     )
     return ResponseEnvelope.ok(InternalCacheStoreResponse(cache_id=cache_id))
 

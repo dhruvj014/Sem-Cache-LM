@@ -38,13 +38,41 @@ class CacheService(CacheReader, CacheWriter):
         self._redis = redis_infra
         self._collection = settings.qdrant_collection
 
-    async def search(self, embedding: List[float], top_k: int = 5) -> List[CacheHit]:
-        results = await self._qdrant.client.search(
-            collection_name=self._collection,
-            query_vector=embedding,
-            limit=top_k,
-            with_payload=True,
-        )
+    async def search(
+        self,
+        embedding: List[float],
+        top_k: int = 5,
+        sparse_indices: list[int] | None = None,
+        sparse_values: list[float] | None = None,
+    ) -> List[CacheHit]:
+        if sparse_indices:
+            from qdrant_client.http.models import Fusion, FusionQuery, Prefetch
+
+            prefetch = [
+                Prefetch(query=embedding, using="dense", limit=top_k * 2),
+                Prefetch(
+                    query=qmodels.SparseVector(
+                        indices=sparse_indices, values=sparse_values or []
+                    ),
+                    using="sparse",
+                    limit=top_k * 2,
+                ),
+            ]
+            query_result = await self._qdrant.client.query_points(
+                collection_name=self._collection,
+                prefetch=prefetch,
+                query=FusionQuery(fusion=Fusion.RRF),
+                limit=top_k,
+                with_payload=True,
+            )
+            results = query_result.points
+        else:
+            results = await self._qdrant.client.search(
+                collection_name=self._collection,
+                query_vector=("dense", embedding),
+                limit=top_k,
+                with_payload=True,
+            )
         if not results:
             return []
 
@@ -145,6 +173,8 @@ class CacheService(CacheReader, CacheWriter):
         embedding: List[float],
         response: str,
         metadata: dict,
+        sparse_indices: list[int] | None = None,
+        sparse_values: list[float] | None = None,
     ) -> str:
         cache_id = str(uuid.uuid4())
         now = datetime.now(timezone.utc).isoformat()
@@ -155,12 +185,17 @@ class CacheService(CacheReader, CacheWriter):
             "last_used_at": now,
             **(metadata or {}),
         }
+        vector: dict = {"dense": embedding}
+        if sparse_indices:
+            vector["sparse"] = qmodels.SparseVector(
+                indices=sparse_indices, values=sparse_values or []
+            )
         await self._qdrant.client.upsert(
             collection_name=self._collection,
             points=[
                 qmodels.PointStruct(
                     id=cache_id,
-                    vector=embedding,
+                    vector=vector,
                     payload=payload,
                 )
             ],

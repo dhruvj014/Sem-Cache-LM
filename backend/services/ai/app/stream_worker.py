@@ -9,7 +9,7 @@ import os
 from redis.exceptions import ResponseError
 
 from shared.config.settings import Settings
-from shared.contracts.internal import InternalEmbedRequest, InternalGenerateRequest
+from shared.contracts.internal import InternalEmbedRequest, InternalGenerateRequest, InternalSparseEmbedRequest
 from shared.contracts.streams import (
     SCHEMA_VERSION_V1,
     AiCommandKind,
@@ -107,7 +107,16 @@ async def _handle_one(*, r, settings: Settings, svc, stream: str, group: str, ms
 
     try:
         if cmd.kind == AiCommandKind.embed:
-            out = await svc.embed(InternalEmbedRequest(text=cmd.text))
+            if cmd.include_sparse:
+                out, sparse_out = await asyncio.gather(
+                    svc.embed(InternalEmbedRequest(text=cmd.text)),
+                    svc.sparse_encode(InternalSparseEmbedRequest(text=cmd.text)),
+                )
+                sparse_indices = sparse_out.indices
+                sparse_values = sparse_out.values
+            else:
+                out = await svc.embed(InternalEmbedRequest(text=cmd.text))
+                sparse_indices, sparse_values = [], []
             result = AiResultV1(
                 schema_version=SCHEMA_VERSION_V1,
                 correlation_id=cmd.correlation_id,
@@ -119,6 +128,8 @@ async def _handle_one(*, r, settings: Settings, svc, stream: str, group: str, ms
                 embedding=out.embedding,
                 vector_size=out.vector_size,
                 latency_ms=out.latency_ms,
+                sparse_indices=sparse_indices,
+                sparse_values=sparse_values,
             )
         elif cmd.kind == AiCommandKind.generate:
             out = await svc.generate(

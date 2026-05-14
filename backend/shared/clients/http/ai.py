@@ -6,7 +6,11 @@ import httpx
 import structlog
 
 from shared.config.settings import Settings
-from shared.contracts.internal import InternalEmbedRequest, InternalGenerateRequest
+from shared.contracts.internal import (
+    InternalEmbedRequest,
+    InternalGenerateRequest,
+    InternalSparseEmbedRequest,
+)
 from shared.domain.model_providers import EmbeddingService, LLMClient
 
 
@@ -34,6 +38,13 @@ class HttpAIClient(EmbeddingService, LLMClient):
         for t in texts:
             out.append(await self.embed(t))
         return out
+
+    async def sparse_encode(self, text: str) -> tuple[list[int], list[float]]:
+        body = await self._post(
+            "/internal/v1/sparse-embed",
+            InternalSparseEmbedRequest(text=text).model_dump(),
+        )
+        return list(body["indices"]), list(body["values"])
 
     async def generate(self, prompt: str, system: str | None = None) -> str:
         body = await self._post(

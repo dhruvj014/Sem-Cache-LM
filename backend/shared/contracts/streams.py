@@ -64,6 +64,7 @@ class AiCommandV1(StreamMeta):
     kind: AiCommandKind
     text: str = Field(..., min_length=1)
     system: Optional[str] = None
+    include_sparse: bool = False
 
 
 class AiResultV1(StreamMeta):
@@ -73,6 +74,8 @@ class AiResultV1(StreamMeta):
     vector_size: int = 0
     generated_text: Optional[str] = None
     latency_ms: float = 0.0
+    sparse_indices: list[int] = Field(default_factory=list)
+    sparse_values: list[float] = Field(default_factory=list)
 
 
 class CacheCommandKind(str, Enum):
@@ -89,6 +92,8 @@ class CacheCommandV1(StreamMeta):
     response: Optional[str] = None
     metadata: dict[str, Any] = Field(default_factory=dict)
     cache_id: Optional[str] = None
+    sparse_indices: list[int] = Field(default_factory=list)
+    sparse_values: list[float] = Field(default_factory=list)
 
 
 class CacheResultV1(StreamMeta):

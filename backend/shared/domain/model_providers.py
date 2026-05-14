@@ -15,6 +15,11 @@ class EmbeddingService(ABC):
     async def embed_batch(self, texts: List[str]) -> List[List[float]]:
         ...
 
+    @abstractmethod
+    async def sparse_encode(self, text: str) -> tuple[list[int], list[float]]:
+        """Return (indices, values) BM25 sparse vector for hybrid search."""
+        ...
+
     @property
     @abstractmethod
     def vector_size(self) -> int:

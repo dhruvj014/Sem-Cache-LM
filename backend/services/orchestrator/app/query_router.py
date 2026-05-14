@@ -1,3 +1,4 @@
+import asyncio
 from typing import Protocol
 
 from shared.domain.cache_boundary import CacheBoundary
@@ -70,10 +71,16 @@ class QueryRouterService:
                 query,
                 self._settings.cache_session_snippet_max_chars,
             )
-            embedding = await self._embedder.embed(search_text)
+            embedding, (sparse_idx, sparse_val) = await asyncio.gather(
+                self._embedder.embed(search_text),
+                self._embedder.sparse_encode(search_text),
+            )
             try:
                 hits = await self._reader.search(
-                    embedding, top_k=self._settings.cache_search_top_k
+                    embedding,
+                    top_k=self._settings.cache_search_top_k,
+                    sparse_indices=sparse_idx,
+                    sparse_values=sparse_val,
                 )
             except Exception as e:  # noqa: BLE001
                 logger.warning(
@@ -83,9 +90,7 @@ class QueryRouterService:
                 )
                 hits = []
             hits = rerank_hits_with_lexical_blend(
-                query,
                 hits,
-                self._settings.cache_rerank_lexical_weight,
                 quality_weight=self._settings.cache_rerank_quality_weight,
                 popularity_weight=self._settings.cache_rerank_popularity_weight,
                 popularity_cap=self._settings.cache_rerank_popularity_cap,
@@ -145,7 +150,10 @@ class QueryRouterService:
                         hit.response,
                         self._settings.cache_index_response_max_chars,
                     )
-                    idx_emb = await self._embedder.embed(idx_text)
+                    idx_emb, (idx_sparse_idx, idx_sparse_val) = await asyncio.gather(
+                        self._embedder.embed(idx_text),
+                        self._embedder.sparse_encode(idx_text),
+                    )
                     try:
                         await self._writer.store(
                             query=query,
@@ -155,6 +163,8 @@ class QueryRouterService:
                                 "session_id": session_id,
                                 "validated_from_cache_id": hit.id,
                             },
+                            sparse_indices=idx_sparse_idx,
+                            sparse_values=idx_sparse_val,
                         )
                     except Exception as e:  # noqa: BLE001
                         logger.warning(
@@ -188,7 +198,10 @@ class QueryRouterService:
                         llm_response,
                         self._settings.cache_index_response_max_chars,
                     )
-                    idx_emb = await self._embedder.embed(idx_text)
+                    idx_emb, (idx_sparse_idx, idx_sparse_val) = await asyncio.gather(
+                        self._embedder.embed(idx_text),
+                        self._embedder.sparse_encode(idx_text),
+                    )
                     try:
                         new_id = await self._writer.store(
                             query=query,
@@ -202,6 +215,8 @@ class QueryRouterService:
                                     else []
                                 ),
                             },
+                            sparse_indices=idx_sparse_idx,
+                            sparse_values=idx_sparse_val,
                         )
                     except Exception as e:  # noqa: BLE001
                         logger.warning(
@@ -246,7 +261,10 @@ class QueryRouterService:
                     llm_response,
                     self._settings.cache_index_response_max_chars,
                 )
-                idx_emb = await self._embedder.embed(idx_text)
+                idx_emb, (idx_sparse_idx, idx_sparse_val) = await asyncio.gather(
+                    self._embedder.embed(idx_text),
+                    self._embedder.sparse_encode(idx_text),
+                )
                 try:
                     new_id = await self._writer.store(
                         query=query,
@@ -260,6 +278,8 @@ class QueryRouterService:
                                 else []
                             ),
                         },
+                        sparse_indices=idx_sparse_idx,
+                        sparse_values=idx_sparse_val,
                     )
                 except Exception as e:  # noqa: BLE001
                     logger.warning(

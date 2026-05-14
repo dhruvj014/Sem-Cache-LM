@@ -23,10 +23,21 @@ class HttpCacheClient(CacheBoundary):
         self._http = http_client
         self._base_url = (settings.cache_service_base_url or "").rstrip("/")
 
-    async def search(self, embedding: list[float], top_k: int = 5) -> list[CacheHit]:
+    async def search(
+        self,
+        embedding: list[float],
+        top_k: int = 5,
+        sparse_indices: list[int] | None = None,
+        sparse_values: list[float] | None = None,
+    ) -> list[CacheHit]:
         body = await self._post(
             "/internal/v1/cache/search",
-            InternalCacheSearchRequest(embedding=embedding, top_k=top_k).model_dump(),
+            InternalCacheSearchRequest(
+                embedding=embedding,
+                top_k=top_k,
+                sparse_indices=sparse_indices or [],
+                sparse_values=sparse_values or [],
+            ).model_dump(),
         )
         return [CacheHit.model_validate(item) for item in body["hits"]]
 
@@ -36,6 +47,8 @@ class HttpCacheClient(CacheBoundary):
         embedding: list[float],
         response: str,
         metadata: dict,
+        sparse_indices: list[int] | None = None,
+        sparse_values: list[float] | None = None,
     ) -> str:
         body = await self._post(
             "/internal/v1/cache/store",
@@ -44,6 +57,8 @@ class HttpCacheClient(CacheBoundary):
                 embedding=embedding,
                 response=response,
                 metadata=metadata or {},
+                sparse_indices=sparse_indices or [],
+                sparse_values=sparse_values or [],
             ).model_dump(),
         )
         return str(body["cache_id"])

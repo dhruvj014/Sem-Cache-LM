@@ -10,6 +10,8 @@ from shared.contracts.internal import (
     InternalEmbedResponse,
     InternalGenerateRequest,
     InternalGenerateResponse,
+    InternalSparseEmbedRequest,
+    InternalSparseEmbedResponse,
 )
 from shared.infra.redis_client import RedisInfrastructure
 from shared.domain.model_providers import EmbeddingService
@@ -73,6 +75,17 @@ class AIInferenceService:
             estimated_input_tokens=in_tokens,
             estimated_output_tokens=out_tokens,
             estimated_cost_usd=estimated_cost,
+        )
+
+    async def sparse_encode(self, request: InternalSparseEmbedRequest) -> InternalSparseEmbedResponse:
+        await self._enforce_rate_limit("sparse_embed")
+        start = time.perf_counter()
+        indices, values = await self._embedder.sparse_encode(request.text)
+        latency_ms = (time.perf_counter() - start) * 1000
+        return InternalSparseEmbedResponse(
+            indices=indices,
+            values=values,
+            latency_ms=round(latency_ms, 2),
         )
 
     async def health(self) -> bool:

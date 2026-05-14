@@ -111,11 +111,16 @@ class Settings(BaseSettings):
         default=450,
         description="Excerpt of last answer in session-aware search embedding.",
     )
+    bm25_model: str = Field(
+        default="Qdrant/bm25",
+        description="FastEmbed BM25 model name for sparse vector encoding.",
+    )
+
     cache_rerank_lexical_weight: float = Field(
-        default=0.22,
+        default=0.0,
         ge=0.0,
         le=1.0,
-        description="Blend: (1-w)*dense + w*lexical overlap.",
+        description="Deprecated — BM25 hybrid search handles lexical signals at retrieval time.",
     )
     cache_rerank_quality_weight: float = Field(
         default=0.08,

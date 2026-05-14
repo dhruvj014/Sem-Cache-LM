@@ -8,7 +8,13 @@ from shared.models.schemas import CacheEntry, CacheHit, EvictionResult
 
 class CacheReader(ABC):
     @abstractmethod
-    async def search(self, embedding: List[float], top_k: int = 5) -> List[CacheHit]:
+    async def search(
+        self,
+        embedding: List[float],
+        top_k: int = 5,
+        sparse_indices: list[int] | None = None,
+        sparse_values: list[float] | None = None,
+    ) -> List[CacheHit]:
         ...
 
     @abstractmethod
@@ -30,6 +36,8 @@ class CacheWriter(ABC):
         embedding: List[float],
         response: str,
         metadata: dict,
+        sparse_indices: list[int] | None = None,
+        sparse_values: list[float] | None = None,
     ) -> str:
         ...
 

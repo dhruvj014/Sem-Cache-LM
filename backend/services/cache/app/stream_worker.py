@@ -127,7 +127,12 @@ async def _handle_one(
         if cmd.kind == CacheCommandKind.search:
             if not cmd.embedding or cmd.top_k is None:
                 raise ValueError("cache search requires embedding and top_k")
-            hits = await cache_service.search(cmd.embedding, top_k=cmd.top_k)
+            hits = await cache_service.search(
+                cmd.embedding,
+                top_k=cmd.top_k,
+                sparse_indices=cmd.sparse_indices or None,
+                sparse_values=cmd.sparse_values or None,
+            )
             result = CacheResultV1(
                 schema_version=SCHEMA_VERSION_V1,
                 correlation_id=cmd.correlation_id,
@@ -146,6 +151,8 @@ async def _handle_one(
                 cmd.embedding,
                 cmd.response,
                 cmd.metadata or {},
+                sparse_indices=cmd.sparse_indices or None,
+                sparse_values=cmd.sparse_values or None,
             )
             result = CacheResultV1(
                 schema_version=SCHEMA_VERSION_V1,

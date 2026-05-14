@@ -17,6 +17,16 @@ class InternalEmbedResponse(BaseModel):
     provider: str
 
 
+class InternalSparseEmbedRequest(BaseModel):
+    text: str = Field(..., min_length=1)
+
+
+class InternalSparseEmbedResponse(BaseModel):
+    indices: list[int]
+    values: list[float]
+    latency_ms: float
+
+
 class InternalGenerateRequest(BaseModel):
     prompt: str = Field(..., min_length=1)
     system: Optional[str] = None
@@ -50,6 +60,8 @@ class InternalRagRetrieveResponse(BaseModel):
 class InternalCacheSearchRequest(BaseModel):
     embedding: list[float]
     top_k: int = Field(default=5, ge=1, le=100)
+    sparse_indices: list[int] = Field(default_factory=list)
+    sparse_values: list[float] = Field(default_factory=list)
 
 
 class InternalCacheSearchResponse(BaseModel):
@@ -61,6 +73,8 @@ class InternalCacheStoreRequest(BaseModel):
     embedding: list[float]
     response: str
     metadata: dict[str, Any] = Field(default_factory=dict)
+    sparse_indices: list[int] = Field(default_factory=list)
+    sparse_values: list[float] = Field(default_factory=list)
 
 
 class InternalCacheStoreResponse(BaseModel):

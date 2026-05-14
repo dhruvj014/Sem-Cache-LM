@@ -1,4 +1,5 @@
-from typing import List
+import asyncio
+from typing import ClassVar, List, Optional
 
 import httpx
 
@@ -11,6 +12,8 @@ logger = get_logger(__name__)
 
 
 class OllamaEmbeddingService(EmbeddingService):
+    _bm25_encoder: ClassVar[Optional[object]] = None
+
     def __init__(self, settings: Settings, http_client: httpx.AsyncClient):
         self._settings = settings
         self._http = http_client
@@ -40,3 +43,16 @@ class OllamaEmbeddingService(EmbeddingService):
         for t in texts:
             results.append(await self.embed(t))
         return results
+
+    async def sparse_encode(self, text: str) -> tuple[list[int], list[float]]:
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, self._encode_bm25_sync, text)
+
+    def _encode_bm25_sync(self, text: str) -> tuple[list[int], list[float]]:
+        if OllamaEmbeddingService._bm25_encoder is None:
+            from fastembed.sparse.bm25 import SparseTextEmbedding
+            OllamaEmbeddingService._bm25_encoder = SparseTextEmbedding(
+                model_name=self._settings.bm25_model
+            )
+        result = next(OllamaEmbeddingService._bm25_encoder.embed([text]))
+        return result.indices.tolist(), result.values.tolist()

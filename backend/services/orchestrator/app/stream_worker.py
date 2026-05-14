@@ -173,7 +173,9 @@ class QueryStreamOrchestrator:
             raise RuntimeError(res.error or "rag failed")
         return res
 
-    async def _embed(self, correlation_id: str, job_id: str, text: str) -> List[float]:
+    async def _embed(
+        self, correlation_id: str, job_id: str, text: str
+    ) -> tuple[List[float], list[int], list[float]]:
         cmd_id = str(uuid.uuid4())
         cmd = AiCommandV1(
             schema_version=SCHEMA_VERSION_V1,
@@ -183,11 +185,12 @@ class QueryStreamOrchestrator:
             producer="orchestrator",
             kind=AiCommandKind.embed,
             text=text,
+            include_sparse=True,
         )
         res = await self._wait_ai(cmd)
         if not res.embedding:
             raise RuntimeError("empty embedding")
-        return res.embedding
+        return res.embedding, res.sparse_indices, res.sparse_values
 
     async def _generate_plain(self, correlation_id: str, job_id: str, prompt: str) -> str:
         cmd_id = str(uuid.uuid4())
@@ -204,7 +207,13 @@ class QueryStreamOrchestrator:
         return res.generated_text or ""
 
     async def _cache_search(
-        self, correlation_id: str, job_id: str, embedding: List[float], top_k: int
+        self,
+        correlation_id: str,
+        job_id: str,
+        embedding: List[float],
+        top_k: int,
+        sparse_indices: list[int] | None = None,
+        sparse_values: list[float] | None = None,
     ) -> List[CacheHit]:
         cmd_id = str(uuid.uuid4())
         cmd = CacheCommandV1(
@@ -216,6 +225,8 @@ class QueryStreamOrchestrator:
             kind=CacheCommandKind.search,
             embedding=embedding,
             top_k=top_k,
+            sparse_indices=sparse_indices or [],
+            sparse_values=sparse_values or [],
         )
         res = await self._wait_cache(cmd)
         return [CacheHit.model_validate(h) for h in res.hits]
@@ -242,6 +253,8 @@ class QueryStreamOrchestrator:
         embedding: List[float],
         response: str,
         metadata: dict,
+        sparse_indices: list[int] | None = None,
+        sparse_values: list[float] | None = None,
     ) -> str | None:
         cmd_id = str(uuid.uuid4())
         cmd = CacheCommandV1(
@@ -255,6 +268,8 @@ class QueryStreamOrchestrator:
             embedding=embedding,
             response=response,
             metadata=metadata or {},
+            sparse_indices=sparse_indices or [],
+            sparse_values=sparse_values or [],
         )
         res = await self._wait_cache(cmd)
         return res.cache_id
@@ -327,7 +342,7 @@ class QueryStreamOrchestrator:
                     query,
                     self._settings.cache_session_snippet_max_chars,
                 )
-                embedding = await self._embed(correlation_id, job_id, search_text)
+                embedding, sparse_idx, sparse_val = await self._embed(correlation_id, job_id, search_text)
 
                 try:
                     hits = await self._cache_search(
@@ -335,6 +350,8 @@ class QueryStreamOrchestrator:
                         job_id,
                         embedding,
                         self._settings.cache_search_top_k,
+                        sparse_indices=sparse_idx or None,
+                        sparse_values=sparse_val or None,
                     )
                 except Exception as e:  # noqa: BLE001
                     logger.warning(
@@ -345,9 +362,7 @@ class QueryStreamOrchestrator:
                     hits = []
 
                 hits = rerank_hits_with_lexical_blend(
-                    query,
                     hits,
-                    self._settings.cache_rerank_lexical_weight,
                     quality_weight=self._settings.cache_rerank_quality_weight,
                     popularity_weight=self._settings.cache_rerank_popularity_weight,
                     popularity_cap=self._settings.cache_rerank_popularity_cap,
@@ -396,7 +411,7 @@ class QueryStreamOrchestrator:
                             hit.response,
                             self._settings.cache_index_response_max_chars,
                         )
-                        idx_emb = await self._embed(correlation_id, job_id, idx_text)
+                        idx_emb, idx_sp_idx, idx_sp_val = await self._embed(correlation_id, job_id, idx_text)
                         try:
                             await self._cache_store(
                                 correlation_id,
@@ -405,6 +420,8 @@ class QueryStreamOrchestrator:
                                 embedding=idx_emb,
                                 response=hit.response,
                                 metadata={"session_id": session_id, "validated_from_cache_id": hit.id},
+                                sparse_indices=idx_sp_idx or None,
+                                sparse_values=idx_sp_val or None,
                             )
                         except Exception as e:  # noqa: BLE001
                             logger.warning("orchestrator.store_failed", error_repr=repr(e))
@@ -430,7 +447,7 @@ class QueryStreamOrchestrator:
                             else await self._generate_plain(correlation_id, job_id, query)
                         )
                         idx_text = build_index_text_for_vector(query, llm_response, self._settings.cache_index_response_max_chars)
-                        idx_emb = await self._embed(correlation_id, job_id, idx_text)
+                        idx_emb, idx_sp_idx, idx_sp_val = await self._embed(correlation_id, job_id, idx_text)
                         new_id = None
                         try:
                             new_id = await self._cache_store(
@@ -443,6 +460,8 @@ class QueryStreamOrchestrator:
                                     "session_id": session_id,
                                     "rag_citations": [str(x.get("file_path", "")) for x in rag_result.citations],
                                 },
+                                sparse_indices=idx_sp_idx or None,
+                                sparse_values=idx_sp_val or None,
                             )
                         except Exception as e:  # noqa: BLE001
                             logger.warning("orchestrator.store_failed", error_repr=repr(e))
@@ -467,7 +486,7 @@ class QueryStreamOrchestrator:
                     )
                     top_score = hits[0].score if hits else 0.0
                     idx_text = build_index_text_for_vector(query, llm_response, self._settings.cache_index_response_max_chars)
-                    idx_emb = await self._embed(correlation_id, job_id, idx_text)
+                    idx_emb, idx_sp_idx, idx_sp_val = await self._embed(correlation_id, job_id, idx_text)
                     new_id = None
                     try:
                         new_id = await self._cache_store(
@@ -480,6 +499,8 @@ class QueryStreamOrchestrator:
                                 "session_id": session_id,
                                 "rag_citations": [str(x.get("file_path", "")) for x in rag_result.citations],
                             },
+                            sparse_indices=idx_sp_idx or None,
+                            sparse_values=idx_sp_val or None,
                         )
                     except Exception as e:  # noqa: BLE001
                         logger.warning("orchestrator.store_failed", error_repr=repr(e))

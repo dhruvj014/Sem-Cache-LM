@@ -37,13 +37,29 @@ class QdrantInfrastructure:
         existing = await self._client.get_collections()
         names = {c.name for c in existing.collections}
         if collection in names:
-            return
+            info = await self._client.get_collection(collection)
+            # Legacy single-vector collections use VectorParams directly (not a dict).
+            # Delete and recreate so hybrid dense+sparse config takes effect.
+            if isinstance(info.config.params.vectors, qmodels.VectorParams):
+                logger.warning(
+                    "qdrant.legacy_collection_detected",
+                    collection=collection,
+                    action="recreating for hybrid dense+sparse search",
+                )
+                await self._client.delete_collection(collection)
+            else:
+                return
         await self._client.create_collection(
             collection_name=collection,
-            vectors_config=qmodels.VectorParams(
-                size=self._settings.qdrant_vector_size,
-                distance=qmodels.Distance.COSINE,
-            ),
+            vectors_config={
+                "dense": qmodels.VectorParams(
+                    size=self._settings.qdrant_vector_size,
+                    distance=qmodels.Distance.COSINE,
+                )
+            },
+            sparse_vectors_config={
+                "sparse": qmodels.SparseVectorParams()
+            },
         )
         logger.info("qdrant.collection_created", collection=collection)
 
