@@ -20,6 +20,7 @@ async def internal_query_event(request: InternalQueryEvent, app_request: Request
         latency_ms=request.latency_ms,
         cache_id=request.cache_id,
         response_text=request.response_text,
+        job_id=request.job_id,
     )
     return ResponseEnvelope.ok({"accepted": True, "correlation_id": request.correlation_id})
 

@@ -95,6 +95,10 @@ class InternalQueryEvent(BaseModel):
     latency_ms: float
     cache_id: Optional[str] = None
     response_text: str
+    job_id: Optional[str] = Field(
+        default=None,
+        description="Async query job id; enables dedupe when stream and HTTP both record.",
+    )
     emitted_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 

@@ -17,8 +17,12 @@ async def job_create_pending(
     job_id: str,
     correlation_id: str,
     ttl_seconds: int,
+    query: str = "",
 ) -> None:
     key = f"{JOB_KEY_PREFIX}{job_id}"
+    q = (query or "").strip()
+    if len(q) > 4000:
+        q = q[:4000]
     pipe = r.pipeline()
     pipe.hset(
         key,
@@ -29,6 +33,7 @@ async def job_create_pending(
             "updated_at": _now_iso(),
             "result_json": "",
             "error": "",
+            "query": q,
         },
     )
     pipe.expire(key, ttl_seconds)

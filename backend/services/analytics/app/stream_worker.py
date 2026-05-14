@@ -48,6 +48,7 @@ async def run_analytics_projector(
                         latency_ms=evt.latency_ms,
                         cache_id=evt.cache_id,
                         response_text=evt.response_text,
+                        job_id=evt.job_id,
                     )
                     await r.xack(stream, group, msg_id)
                 except Exception as e:  # noqa: BLE001
@@ -92,6 +93,7 @@ async def run_analytics_projector(
                         latency_ms=evt.latency_ms,
                         cache_id=evt.cache_id,
                         response_text=evt.response_text,
+                        job_id=evt.job_id,
                     )
                     await r.xack(stream, group, msg_id)
                 except Exception as e:  # noqa: BLE001

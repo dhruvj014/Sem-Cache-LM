@@ -27,6 +27,8 @@ class HttpAnalyticsClient(AnalyticsClient):
         latency_ms: float,
         cache_id: str | None,
         response_text: str,
+        *,
+        job_id: str | None = None,
     ) -> None:
         cid = structlog.contextvars.get_contextvars().get("correlation_id") or "unknown"
         req = InternalQueryEvent(
@@ -38,8 +40,9 @@ class HttpAnalyticsClient(AnalyticsClient):
             latency_ms=latency_ms,
             cache_id=cache_id,
             response_text=response_text,
+            job_id=job_id,
         )
-        await self._request("POST", "/internal/v1/events/query", json=req.model_dump())
+        await self._request("POST", "/internal/v1/events/query", json=req.model_dump(mode="json"))
 
     async def summary(self) -> AnalyticsSummary:
         data = await self._request("GET", "/internal/v1/summary")

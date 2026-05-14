@@ -17,6 +17,8 @@ class AnalyticsClient(ABC):
         latency_ms: float,
         cache_id: str | None,
         response_text: str,
+        *,
+        job_id: str | None = None,
     ) -> None:
         ...
 

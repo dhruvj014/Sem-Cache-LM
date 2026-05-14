@@ -3,7 +3,7 @@ import uuid
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 
-from shared.contracts.streams import SCHEMA_VERSION_V1, QuerySubmittedV1
+from shared.contracts.streams import SCHEMA_VERSION_V1, JobStatus, QuerySubmittedV1
 from shared.infra.stream_runtime import xadd_model
 from shared.jobs.redis_jobs import decode_job_view, job_create_pending, job_get_all
 from shared.models.schemas import (
@@ -36,6 +36,7 @@ async def submit_query(
             job_id=job_id,
             correlation_id=str(correlation_id),
             ttl_seconds=settings.query_job_ttl_seconds,
+            query=request.query,
         )
         cmd_id = str(uuid.uuid4())
         evt = QuerySubmittedV1(
@@ -88,13 +89,37 @@ async def get_query_job(job_id: str, raw_request: Request):
             parsed_result = None
     else:
         parsed_result = None
+    status_str = str(view.get("status", "unknown"))
     body = QueryJobStatusResponse(
         job_id=job_id,
-        status=str(view.get("status", "unknown")),
+        status=status_str,
         correlation_id=view.get("correlation_id"),
         created_at=view.get("created_at"),
         updated_at=view.get("updated_at"),
         result=parsed_result,
         error=view.get("error") or None,
     )
+    if status_str == JobStatus.completed.value and parsed_result is not None:
+        user_query = str(view.get("query") or "").strip()
+        if not user_query:
+            user_query = (parsed_result.matched_query or "").strip()
+        analytics = raw_request.app.state.analytics_boundary
+        try:
+            await analytics.record_query(
+                query=user_query or "(query unavailable)",
+                source=parsed_result.source,
+                agent_action=parsed_result.agent_action,
+                similarity_score=parsed_result.similarity_score,
+                latency_ms=parsed_result.latency_ms,
+                cache_id=parsed_result.cache_id,
+                response_text=parsed_result.response,
+                job_id=job_id,
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.warning(
+                "gateway.analytics_record_failed",
+                job_id=job_id,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
     return ResponseEnvelope.ok(body)

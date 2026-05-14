@@ -9,7 +9,8 @@
 # password if required) in `.env`. Containers must run in a VPC/subnets that can reach
 # the cache security group. Optional local Redis: `docker compose --profile bundled-redis …`
 #
-# Qdrant env blocks mirror docker-compose.yml for Qdrant Cloud / TLS.
+# Qdrant: set QDRANT_* and RAG_QDRANT_* in `.env` to Qdrant Cloud (HTTPS + API key). No local
+# container is started unless you use: docker compose --profile bundled-qdrant …
 
 x-redis-env: &redis_env
   REDIS_MODE: ${REDIS_MODE:-aws}
@@ -59,8 +60,6 @@ services:
     ports:
       - "8000:8000"
     depends_on:
-      qdrant:
-        condition: service_healthy
       ai:
         condition: service_started
       cache:
@@ -119,8 +118,6 @@ services:
     ports:
       - "8001:8001"
     depends_on:
-      qdrant:
-        condition: service_healthy
       ai:
         condition: service_started
     healthcheck:
@@ -153,8 +150,6 @@ services:
     ports:
       - "8002:8002"
     depends_on:
-      qdrant:
-        condition: service_healthy
       ai:
         condition: service_started
     healthcheck:
@@ -258,6 +253,8 @@ services:
       start_period: 30s
 
   qdrant:
+    profiles:
+      - bundled-qdrant
     image: qdrant/qdrant:v1.11.0
     container_name: semcachelm-qdrant
     restart: unless-stopped

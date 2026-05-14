@@ -15,6 +15,8 @@ STATS_KEY = "semcache:stats"
 HISTORY_KEY = "semcache:history"
 LAST_DECISION_KEY = "semcache:last_decision"
 HISTORY_LIMIT = 200
+ANALYTICS_JOB_DEDUPE_PREFIX = "semcache:analytics:dedupe:"
+ANALYTICS_JOB_DEDUPE_TTL_SECONDS = 172_800  # 48h; job hash TTL is shorter, ids are UUIDs
 
 CHARS_PER_TOKEN = 4
 
@@ -39,8 +41,21 @@ class AnalyticsService:
         latency_ms: float,
         cache_id: Optional[str],
         response_text: str,
+        *,
+        job_id: Optional[str] = None,
     ) -> None:
         r = self._redis.client
+        if job_id:
+            dedupe_key = f"{ANALYTICS_JOB_DEDUPE_PREFIX}{job_id}"
+            if not await r.set(
+                dedupe_key,
+                "1",
+                nx=True,
+                ex=ANALYTICS_JOB_DEDUPE_TTL_SECONDS,
+            ):
+                logger.debug("analytics.record_query_skipped_duplicate", job_id=job_id)
+                return
+
         pipe = r.pipeline()
         pipe.hincrby(STATS_KEY, "total_queries", 1)
 
